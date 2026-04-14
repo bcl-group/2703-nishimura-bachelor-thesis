@@ -1,2 +1,2 @@
-# 2703-nishimura-bachelor-thesis
-西村の卒論用リポジトリ
+# 2027年卒　西村
+
