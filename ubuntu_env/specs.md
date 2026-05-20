@@ -13,4 +13,4 @@
 6. グラフィックボード(GPU)
     - `lspci  | grep VGA`
 7. セキュリティソフト確認
-    - `sudo sudo /opt/f-secure/linuxsecurity/bin/lsctl status get subscription`
+    - `sudo /opt/f-secure/linuxsecurity/bin/lsctl status get subscription`
