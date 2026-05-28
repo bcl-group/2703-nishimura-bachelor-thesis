@@ -7,6 +7,9 @@
 	
 ## 4/28~5/13
 ### 何をしたか
+## 5/27~6/3
+- 西村興味文献（https://docs.google.com/spreadsheets/d/1JnCe5PG1Gdi4TrytyS24RWjohXCrJNyGr9zcFHDcfl4/edit?usp=sharing）
+
 ## 5/20~5/27
 - 橋爪先生の卒論（言語発言にともなう協調・非協調関係の発現）、修論（自然淘汰における利他的行動の出現）
 - 山本さんの卒論（利益分配のための情報発信に着目した利他行動の存在理由）
