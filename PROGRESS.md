@@ -9,6 +9,8 @@
 ### 何をしたか
 ## 5/27~6/3
 - 西村興味文献（https://docs.google.com/spreadsheets/d/1JnCe5PG1Gdi4TrytyS24RWjohXCrJNyGr9zcFHDcfl4/edit?usp=sharing）
+- Nicolas　Torres. Social and emotional learning in artifical agents.  Scientific Reports. 2026.(https://www.nature.com/articles/s41598-026-48309-5)を詳しく読む
+- 教育実習の準備
 
 ## 5/20~5/27
 - 橋爪先生の卒論（言語発言にともなう協調・非協調関係の発現）、修論（自然淘汰における利他的行動の出現）
