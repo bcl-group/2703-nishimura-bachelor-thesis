@@ -5,8 +5,11 @@
 - 今後のTODO
 - プログラム開発やアプリケーションのインストールのときに起きた問題点と解決法 
 	
-## 4/28~5/13
+
 ### 何をしたか
+## 6/4~6/16
+- 教育実習
+
 ## 5/27~6/3
 - 西村興味文献（https://docs.google.com/spreadsheets/d/1JnCe5PG1Gdi4TrytyS24RWjohXCrJNyGr9zcFHDcfl4/edit?usp=sharing）
 - Nicolas　Torres. Social and emotional learning in artifical agents.  Scientific Reports. 2026.(https://www.nature.com/articles/s41598-026-48309-5)を詳しく読む
