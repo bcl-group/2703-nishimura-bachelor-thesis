@@ -6,9 +6,11 @@
 - プログラム開発やアプリケーションのインストールのときに起きた問題点と解決法 
 	
 
-### 何をしたか
 ## 6/4~6/16
-- 教育実習
+- 何をしたか
+    - 教育実習
+- 今後のTODO
+    - Social and emotional learning in artifical agentsを読む
 
 ## 5/27~6/3
 - 西村興味文献（https://docs.google.com/spreadsheets/d/1JnCe5PG1Gdi4TrytyS24RWjohXCrJNyGr9zcFHDcfl4/edit?usp=sharing）
