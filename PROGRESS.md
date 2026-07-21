@@ -12,15 +12,25 @@
 
 ## 7/1~7/14
 - 何をしたか
+    - Social and emotional learning in artifical agents　準備
+    - ネットワーク講習準備
+    - 深層学習ゼミ準備
+- 今週のタスク
+- [ ] Social and emotional learning in artifical agents　準備
+- [ ] シミュレーション特論レポート
+- [ ] 利己的な遺伝子読み進め
+
+
+## 7/1~7/14
+- 何をしたか
     - 研究報告準備
     - Social and emotional learning in artifical agents　準備
     - spikes準備
 - 今週のタスク
-- [ ] Social and emotional learning in artifical agents　準備
-- [ ] 感情が生まれた理由
-- [ ] ネットワーク講習会準備
-- [ ] 深層学習ゼミ準備
-- [ ] 利己的な遺伝子
+- [x] Social and emotional learning in artifical agents　準備
+- [x] ネットワーク講習会準備
+- [x] 深層学習ゼミ準備
+
 
 ## 6/24~6/30
 - 何をしたか
