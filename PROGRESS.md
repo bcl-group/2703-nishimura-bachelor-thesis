@@ -10,15 +10,24 @@
 | **1月** | 後期末 | 卒業論文**提出**、発表練習 |  |
 | **2月** |  | **卒論発表会** | |	
 
+## 7/21~7/28
+- 何をしたか
+    - Social and emotional learning in artifical agents　準備
+    - シミュレーション特論レポート
+    - 深層学習ゼミ準備
+- 今週のタスク
+- [] 
+- [] 
+
 ## 7/14~7/21
 - 何をしたか
     - Social and emotional learning in artifical agents　準備
     - ネットワーク講習準備
     - 深層学習ゼミ準備
 - 今週のタスク
-- [ ] Social and emotional learning in artifical agents　準備
-- [ ] シミュレーション特論レポート
-- [ ] 利己的な遺伝子読み進め
+- [x] Social and emotional learning in artifical agents　準備
+- [x] シミュレーション特論レポート
+- [x] 利己的な遺伝子読み進め
 
 
 ## 7/1~7/14
