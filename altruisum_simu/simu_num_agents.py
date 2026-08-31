@@ -18,7 +18,7 @@ REWARD_FOOD = 1.0          # 餌獲得時の報酬
 CLONE_THRESHOLD = 100.0    # 複製閾値
 DEATH_THRESHOLD = -50.0    # 死亡閾値
 TRANSFER_AMOUNT = 1.0      # 利他行動1回あたりのエネルギー譲渡量
-STARVING_THRESHOLD = 0.0  # 他者の「低エネルギー」を判定する閾値
+STARVING_THRESHOLD = 0.0  # 他者の飢餓状態を判定する閾値
 
 class Agent:
     def __init__(self, x, y, weights=None):

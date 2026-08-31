@@ -10,6 +10,30 @@
 | **1月** | 後期末 | 卒業論文**提出**、発表練習 |  |
 | **2月** |  | **卒論発表会** | |	
 
+
+## 8/5~9/1
+- 何をしたか
+    - Social and emotional learning in artifical agents　準備
+    - 研究内容
+        - 利他行動（男女、年齢、感情、、、）
+        - 聴覚、嗅覚などの感覚刺激によって記憶が蘇る仕組み
+            - I.G.Silkis "The Role of the Hippocampus in the Perception and Recall of Odors. A Hypothetical Neural Mechanism" 2023 https://link.springer.com/article/10.1007/s11055-023-01521-6
+    - 簡易研究紹介
+        - 小林武彦 "生物はなぜ死ぬのか"
+            - 生物が必ず死ぬ理由
+                - ゲノムの壊れやすさ(変異率)と寿命のグラフ→反比例
+                - DNAを治す遺伝子を移植して寿命が伸びる遺伝子を発見→寿命が伸びる（DNAが壊れると）とがん、認知症が増えるので、ならないように健康寿命が伸ばせる
+                - 死があるものだけが進化できて今生存できている（進化の結果できた生物は、はじめから死ぬようにできている）
+                - 死は進化のために必要な究極な利的な行為
+            - 老いの意味（生殖不可能な期間が存在するのは人間だけ）
+                - 年配者がいる集団が有利に働いた（社会貢献のために獲得された人だけの特徴）
+                - 利己から利他への意識の変化（若いときは自分で何でもできる→利他的にはなりえない）
+
+        - 柳澤秀吉　"人の認識の数理モデル"
+            - https://www.youtube.com/watch?v=c8Av2ZHmXL4
+        
+
+
 ## 7/29~8/5
 - 何をしたか
     - Social and emotional learning in artifical agents　準備
