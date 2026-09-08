@@ -1,2 +1,4 @@
 .vscode-server/*
 .venv/*
+.gitignore
+.vscode/
