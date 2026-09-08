@@ -10,6 +10,10 @@
 | **1月** | 後期末 | 卒業論文**提出**、発表練習 |  |
 | **2月** |  | **卒論発表会** | |	
 
+## 9/1~9/8
+- 何をしたか
+    - Rutger Hermasen. PLOS Computational Biology. Emergent multilevel selection in a simple spatial model of the evolution of artruism. 2022.  https://doi.org/10.1371/journal.pcbi.1010612
+        
 
 ## 8/5~9/1
 - 何をしたか
