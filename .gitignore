@@ -1,0 +1,11 @@
+ubuntu_env/
+project/project_env/
+
+__pycache__/
+*.pyc
+
+project/data/
+*.csv
+
+project/images/
+*.png
