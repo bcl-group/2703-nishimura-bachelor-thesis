@@ -56,7 +56,7 @@ class Field:
         ]
         return random.choice(neighbors) if neighbors else None
 
-    def _get_torus_direction(self, src_x, src_y, target_x, target_y):
+    def get_torus_direction(self, src_x, src_y, target_x, target_y):
         diff_x = (target_x - src_x + self.field_size // 2) % self.field_size - self.field_size // 2
         diff_y = (target_y - src_y + self.field_size // 2) % self.field_size - self.field_size // 2
 
@@ -71,6 +71,8 @@ class Field:
         for agent in self.agents:
             agent.age += 1
             agent.energy -= self.energy_loss_per_step
+
+            our_energy = agent.energy
             
             on_food = 1 if self.grid_food[agent.x, agent.y] > 0 else 0
             nearest = self.get_nearest_agent(agent)
@@ -79,14 +81,14 @@ class Field:
             see_other = 1 if nearest else 0
             other_is_starving = 1 if nearest and nearest.energy < self.starving_threshold else 0
             
-            move_action, give_energy = agent.decide_action(on_food, see_other, other_is_starving)
+            move_action, give_energy = agent.decide_action(on_food, our_energy, see_other, other_is_starving)
             actions.append((move_action, give_energy))
 
         for i, agent in enumerate(self.agents):
             move_action, give_energy = actions[i]
             nearest = nearest_agents[i]
             
-            if give_energy == 1 and nearest and agent.energy > self.starving_threshold:
+            if give_energy == 1 and nearest:
                 agent.energy -= self.transfer_amount
                 nearest.energy += self.transfer_amount
                 self.altruism_count += 1
@@ -94,16 +96,16 @@ class Field:
             dx, dy = 0, 0
             if move_action[0] == 0 and move_action[1] == 1:
                 if nearest:
-                    dx, dy = self._get_torus_direction(agent.x, agent.y, nearest.x, nearest.y)
+                    dx, dy = self.get_torus_direction(agent.x, agent.y, nearest.x, nearest.y)
                 else:
                     dx, dy = random.choice([-1, 0, 1]), random.choice([-1, 0, 1])
             elif move_action[0] == 1 and move_action[1] == 0:
                 if nearest:
-                    dir_x, dir_y = self._get_torus_direction(agent.x, agent.y, nearest.x, nearest.y)
+                    dir_x, dir_y = self.get_torus_direction(agent.x, agent.y, nearest.x, nearest.y)
                     dx, dy = -dir_x, -dir_y
                 else:
                     dx, dy = random.choice([-1, 0, 1]), random.choice([-1, 0, 1])
-            elif move_action[0] == 0 and move_action[0] == 0:
+            elif move_action[0] == 0 and move_action[1] == 0:
                 dx, dy = random.choice([-1, 0, 1]), random.choice([-1, 0, 1])
             elif move_action[0] == 1 and move_action[1] == 1:
                 dx, dy = 0, 0
@@ -113,7 +115,7 @@ class Field:
             
             if self.grid_food[agent.x, agent.y] > 0:
                 agent.energy += self.reward_food
-                self.grid_food[agent.x, agent.y] -= 1
+                self.grid_food[agent.x, agent.y] -= self.reward_food
 
         self.spawn_objects()
 

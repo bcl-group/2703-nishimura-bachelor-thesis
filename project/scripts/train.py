@@ -1,6 +1,6 @@
 import pandas as pd
 from pathlib import Path
-from src.field import Field
+from src import Field
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -12,7 +12,7 @@ def run_simulation():
     field = Field()
     logs = []
 
-    print("シミュレーションを開始します...")
+    print("simulation start...")
     for step_num in range(1, TOTAL_STEPS + 1):
         field.step()
         
@@ -24,11 +24,11 @@ def run_simulation():
             })
             field.altruism_count = 0
 
-    # データをCSVとして保存
+    # logs saved to CSV
     df = pd.DataFrame(logs)
     csv_path = DATA_DIR / "simulation_history.csv"
     df.to_csv(csv_path, index=False)
-    print(f"シミュレーション完了。ログを保存しました: {csv_path}")
+    print(f"simulation completed. Logs saved to: {csv_path}")
 
 if __name__ == "__main__":
     run_simulation()

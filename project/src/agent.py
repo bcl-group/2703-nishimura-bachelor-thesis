@@ -10,20 +10,20 @@ class Agent:
         self.mutation_rate = mutation_rate
         
         if weights is None:
-            self.weights = np.random.randint(0, 2, (3, 3))
+            self.weights = np.random.randint(0, 2, (3, 4))
         else:
             self.weights = self.mutate(weights)
             
     def mutate(self, weights):
         new_weights = weights.copy()
         for i in range(3):
-            for j in range(3):
+            for j in range(4):
                 if random.random() < self.mutation_rate:
                     new_weights[i, j] = 1 - new_weights[i, j]
         return new_weights
 
-    def decide_action(self, on_food, see_other, other_is_starving):
-        input_vec = np.array([on_food, see_other, other_is_starving])
+    def decide_action(self, on_food, our_energy, see_other, other_is_starving):
+        input_vec = np.array([on_food, our_energy, see_other, other_is_starving])
         output_vec = np.dot(self.weights, input_vec) % 2
         
         move_action = output_vec[0:2]
