@@ -2,7 +2,6 @@ import itertools
 import concurrent.futures
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 from src import Field
@@ -13,11 +12,11 @@ DATA_DIR.mkdir(exist_ok=True)
 # Simulation parameters
 TOTAL_STEPS = 100000
 EVAL_START_STEP = 90001
-NUM_RUNS = 10
+NUM_RUNS = 1
 
 # search space for parameters
-DEATH_THRESHOLDS = np.linspace(-200.0, -10.0, 10) 
-TRANSFER_AMOUNTS = np.linspace(0.5, 10.0, 5)     
+DEATH_THRESHOLDS = np.linspace(-200.0, -10.0, 5) 
+TRANSFER_AMOUNTS = np.linspace(0.5, 5.0, 5)     
 
 def run_single_simulation(death_threshold, transfer_amount):
     """Run a single simulation with specified parameters and return the count of steps where majority of agents performed altruistic actions in the last 10,000 steps."""

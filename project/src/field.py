@@ -15,8 +15,8 @@ class Field:
         reward_food=1.0,
         clone_threshold=100.0,
         death_threshold=-50.0,
-        transfer_amount=1.0,
-        starving_threshold=0.0
+        max_transfer=10.0
+
     ):
         self.field_size = field_size
         self.mutation_rate = mutation_rate
@@ -26,8 +26,7 @@ class Field:
         self.reward_food = reward_food
         self.clone_threshold = clone_threshold
         self.death_threshold = death_threshold
-        self.transfer_amount = transfer_amount
-        self.starving_threshold = starving_threshold
+        self.max_transfer = max_transfer
 
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
@@ -44,16 +43,21 @@ class Field:
     def spawn_objects(self, prob=None):
         if prob is None:
             prob = self.step_food_prob
-        for i in range(self.field_size):
-            for j in range(self.field_size):
-                if random.random() < prob:
-                    self.grid_food[i, j] = self.food_durability
+        spawn_mask = np.random.rand(self.field_size, self.field_size) < prob
+        self.grid_food[spawn_mask] = self.food_durability
 
     def get_nearest_agent(self, agent):
-        neighbors = [
-            other for other in self.agents 
-            if other is not agent and abs(other.x - agent.x) <= 1 and abs(other.y - agent.y) <= 1
-        ]
+        neighbors = []
+        for other in self.agents:
+            if other is agent:
+                continue
+            
+            dx = min(abs(other.x - agent.x), self.field_size - abs(other.x - agent.x))
+            dy = min(abs(other.y - agent.y), self.field_size - abs(other.y - agent.y))
+            
+            if dx <= 1 and dy <= 1:
+                neighbors.append(other)
+                
         return random.choice(neighbors) if neighbors else None
 
     def get_torus_direction(self, src_x, src_y, target_x, target_y):
@@ -70,29 +74,35 @@ class Field:
         
         for agent in self.agents:
             agent.age += 1
-            agent.energy -= self.energy_loss_per_step
-
-            our_energy = agent.energy
-            
             on_food = 1 if self.grid_food[agent.x, agent.y] > 0 else 0
             nearest = self.get_nearest_agent(agent)
             nearest_agents.append(nearest)
             
             see_other = 1 if nearest else 0
-            other_is_starving = 1 if nearest and nearest.energy < self.starving_threshold else 0
+            other_energy = nearest.energy if nearest else 0
             
-            move_action, give_energy = agent.decide_action(on_food, our_energy, see_other, other_is_starving)
-            actions.append((move_action, give_energy))
+            move_action, give_flag, transfer_amount = agent.decide_action(
+                self.clone_threshold, 
+                self.death_threshold, 
+                on_food, 
+                agent.energy, 
+                see_other, 
+                other_energy,
+                max_transfer=self.max_transfer
+            )
+            actions.append((move_action, give_flag, transfer_amount))
 
         for i, agent in enumerate(self.agents):
-            move_action, give_energy = actions[i]
+            agent.energy -= self.energy_loss_per_step
+            move_action, give_flag, transfer_amount = actions[i]
             nearest = nearest_agents[i]
-            
-            if give_energy == 1 and nearest:
-                agent.energy -= self.transfer_amount
-                nearest.energy += self.transfer_amount
+
+            if give_flag and nearest is not None:
+                actual_transfer = min(transfer_amount, agent.energy - self.death_threshold)
+                agent.energy -= actual_transfer
+                nearest.energy += actual_transfer
                 self.altruism_count += 1
-                
+
             dx, dy = 0, 0
             if move_action[0] == 0 and move_action[1] == 1:
                 if nearest:
@@ -112,7 +122,7 @@ class Field:
 
             agent.x = (agent.x + dx) % self.field_size
             agent.y = (agent.y + dy) % self.field_size
-            
+
             if self.grid_food[agent.x, agent.y] > 0:
                 agent.energy += self.reward_food
                 self.grid_food[agent.x, agent.y] -= self.reward_food
