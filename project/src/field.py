@@ -60,6 +60,18 @@ class Field:
                 
         return random.choice(neighbors) if neighbors else None
 
+    def get_nearest_food(self, agent):
+        neighbors_food = []
+        food_positions = np.argwhere(self.grid_food > 0)
+        for food in food_positions:
+            dx = min(abs(food[0] - agent.x), self.field_size - abs(food[0] - agent.x))
+            dy = min(abs(food[1] - agent.y), self.field_size - abs(food[1] - agent.y))
+
+            if dx <= 1 and dy <= 1:
+                neighbors_food.append(food)
+
+        return random.choice(neighbors_food) if neighbors_food else None
+
     def get_torus_direction(self, src_x, src_y, target_x, target_y):
         diff_x = (target_x - src_x + self.field_size // 2) % self.field_size - self.field_size // 2
         diff_y = (target_y - src_y + self.field_size // 2) % self.field_size - self.field_size // 2
@@ -69,56 +81,61 @@ class Field:
         return dir_x, dir_y
 
     def step(self):
-        actions = []
-        nearest_agents = []
-        
+        initial_states = {
+            agent: (agent.x, agent.y, agent.energy) for agent in self.agents
+        }
+        surviving_agents = []
         for agent in self.agents:
             agent.age += 1
-            on_food = 1 if self.grid_food[agent.x, agent.y] > 0 else 0
+            agent.energy -= self.energy_loss_per_step
+            if agent.energy > self.death_threshold:
+                surviving_agents.append(agent)
+        self.agents = surviving_agents
+
+        actions = []
+        
+        for agent in self.agents:
             nearest = self.get_nearest_agent(agent)
-            nearest_agents.append(nearest)
-            
+            nearest_food = self.get_nearest_food(agent)
+
             see_other = 1 if nearest else 0
-            other_energy = nearest.energy if nearest else 0
+            see_food = 1 if nearest_food is not None else 0
+            other_energy = initial_states[nearest][2] if nearest else 0
             
             move_action, give_flag, transfer_amount = agent.decide_action(
                 self.clone_threshold, 
                 self.death_threshold, 
-                on_food, 
-                agent.energy, 
+                see_food,
+                initial_states[agent][2],
                 see_other, 
                 other_energy,
                 max_transfer=self.max_transfer
             )
-            actions.append((move_action, give_flag, transfer_amount))
+            actions.append((agent, tuple(move_action), give_flag, transfer_amount, nearest, nearest_food))
 
-        for i, agent in enumerate(self.agents):
-            agent.energy -= self.energy_loss_per_step
-            move_action, give_flag, transfer_amount = actions[i]
-            nearest = nearest_agents[i]
+        # Iterate over saved actions so removing a dead donor does not skip anyone.
+        for agent, move_action, give_flag, transfer_amount, nearest, nearest_food in actions:
+            if nearest is not None and nearest.energy <= self.death_threshold:
+                nearest = None
 
-            if give_flag and nearest is not None:
+            if give_flag and nearest is not None and transfer_amount > 0:
                 actual_transfer = min(transfer_amount, agent.energy - self.death_threshold)
                 agent.energy -= actual_transfer
                 nearest.energy += actual_transfer
                 self.altruism_count += 1
+                if agent.energy <= self.death_threshold:
+                    self.agents.remove(agent)
+                    continue
 
             dx, dy = 0, 0
-            if move_action[0] == 0 and move_action[1] == 1:
-                if nearest:
-                    dx, dy = self.get_torus_direction(agent.x, agent.y, nearest.x, nearest.y)
-                else:
-                    dx, dy = random.choice([-1, 0, 1]), random.choice([-1, 0, 1])
-            elif move_action[0] == 1 and move_action[1] == 0:
-                if nearest:
-                    dir_x, dir_y = self.get_torus_direction(agent.x, agent.y, nearest.x, nearest.y)
-                    dx, dy = -dir_x, -dir_y
-                else:
-                    dx, dy = random.choice([-1, 0, 1]), random.choice([-1, 0, 1])
-            elif move_action[0] == 0 and move_action[1] == 0:
+            if move_action == (0, 1) and nearest_food is not None:
+                dx, dy = self.get_torus_direction(agent.x, agent.y, nearest_food[0], nearest_food[1])
+            elif move_action == (1, 0) and nearest is not None:
+                target_x, target_y, _ = initial_states[nearest]
+                dir_x, dir_y = self.get_torus_direction(agent.x, agent.y, target_x, target_y)
+                dx, dy = -dir_x, -dir_y
+            elif move_action != (1, 1):
                 dx, dy = random.choice([-1, 0, 1]), random.choice([-1, 0, 1])
-            elif move_action[0] == 1 and move_action[1] == 1:
-                dx, dy = 0, 0
 
             agent.x = (agent.x + dx) % self.field_size
             agent.y = (agent.y + dy) % self.field_size
@@ -131,8 +148,6 @@ class Field:
 
         next_agents = []
         for agent in self.agents:
-            if agent.energy <= self.death_threshold:
-                continue
             if agent.energy >= self.clone_threshold:
                 agent.energy = 0
                 child = Agent(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)

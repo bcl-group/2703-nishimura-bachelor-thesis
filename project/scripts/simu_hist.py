@@ -10,11 +10,11 @@ DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
 
 # Simulation parameters
-TOTAL_STEPS = 100000
+TOTAL_STEPS = 200000
 NUM_RUNS = 1
 
 # search space for parameters
-DEATH_THRESHOLDS = np.linspace(-200.0, -10.0, 10) 
+DEATH_THRESHOLDS = np.linspace(-300.0, -10.0, 20) 
 
 def run_single_simulation(death_threshold):
     """Run a single simulation with specified parameters and return the history of the simulation."""
@@ -29,18 +29,12 @@ def run_single_simulation(death_threshold):
         
         population = len(field.agents)
         altruism = field.altruism_count
-       
-        if population > 0:
-            avg_energy = sum(a.energy for a in field.agents) / population
-        else:
-            avg_energy = 0.0
             
         history.append({
             'death_threshold': death_threshold,
             'step': step_num,
             'altruism_count': altruism,
-            'population': population,
-            'avg_energy': avg_energy
+            'population': population
         })
         
         field.altruism_count = 0 

@@ -16,14 +16,14 @@ class Agent:
             
     def mutate(self, weights):
         mutation_mask = np.random.rand(4, 4) < self.mutation_rate
-        mutation_amounts = np.random.uniform(-0.2, 0.2, (4, 4))
+        mutation_amounts = np.random.uniform(-0.1, 0.1, (4, 4))
         return weights + (mutation_mask * mutation_amounts)
 
-    def decide_action(self, clone_threshold, death_threshold, on_food, our_energy, see_other, other_energy, max_transfer):
-        normalized_my_energy = (our_energy - death_threshold) / (clone_threshold - death_threshold)
+    def decide_action(self, clone_threshold, death_threshold, see_food, my_energy, see_other, other_energy, max_transfer):
+        normalized_my_energy = (my_energy - death_threshold) / (clone_threshold - death_threshold)
         normalized_other_energy = (other_energy - death_threshold) / (clone_threshold - death_threshold)
 
-        input_vec = np.array([on_food, normalized_my_energy, see_other, normalized_other_energy], dtype=float)
+        input_vec = np.array([see_food, normalized_my_energy, see_other, normalized_other_energy], dtype=float)
         raw_output = np.dot(self.weights, input_vec)
         activated_output = 1 / (1 + np.exp(-raw_output))
 
@@ -33,5 +33,8 @@ class Agent:
 
         if give_flag:
             transfer_amount = activated_output[3] * max_transfer
+        else:
+            transfer_amount = 0.0
+
             
         return move_action, give_flag, transfer_amount

@@ -7,71 +7,62 @@ from pathlib import Path
 from src import Field
 
 DATA_DIR = Path("./data")
-DATA_DIR.mkdir(exist_ok=True)
 
 # Simulation parameters
-TOTAL_STEPS = 100000
-EVAL_START_STEP = 90001
+TOTAL_STEPS = 200000
+EVAL_START_STEP = 100001
 NUM_RUNS = 1
 
 # search space for parameters
-DEATH_THRESHOLDS = np.linspace(-200.0, -10.0, 5) 
-TRANSFER_AMOUNTS = np.linspace(0.5, 5.0, 5)     
+DEATH_THRESHOLDS = range(-200, 0, 10)
+MAX_TRANSFERS = range(1, 11)
 
-def run_single_simulation(death_threshold, transfer_amount):
-    """Run a single simulation with specified parameters and return the count of steps where majority of agents performed altruistic actions in the last 10,000 steps."""
+def run_single_simulation(death_threshold, max_transfer):
+    """Return the mean population over steps 100,001 through 200,000."""
     field = Field(
         death_threshold=death_threshold,
-        transfer_amount=transfer_amount
+        max_transfer=max_transfer
     )
     
-    target_step_count = 0
+    population_sum = 0
 
     for step_num in range(1, TOTAL_STEPS + 1):
         field.step()
         
-        # Evaluate only after EVAL_START_STEP to focus on the last 10,000 steps
         if step_num >= EVAL_START_STEP:
-            population = len(field.agents)
-            # Count the step if more than half of the agents performed altruistic actions
-            if population > 0 and field.altruism_count > (population / 2.0):
-                target_step_count += 1
+            population_sum += len(field.agents)
+        # An extinct population stays zero; retain the full evaluation denominator.
+        if not field.agents:
+            break
         
-        field.altruism_count = 0
-        
-    return target_step_count
+    return population_sum / (TOTAL_STEPS - EVAL_START_STEP + 1)
 
 def evaluate_parameter_set(params):
-    """Evaluate a specific parameter set by running 100 simulations and returning the average"""
-    dt, ta = params
-    results = []
-    
-    for _ in range(NUM_RUNS):
-        res = run_single_simulation(dt, ta)
-        results.append(res)
-    
-    avg_steps = np.mean(results)
-    return dt, ta, avg_steps
+    """Average the temporal population means over NUM_RUNS independent runs."""
+    death_threshold, max_transfer = params
+    results = [run_single_simulation(death_threshold, max_transfer) for _ in range(NUM_RUNS)]
+    return death_threshold, max_transfer, float(np.mean(results))
 
 def main():
     print("Starting grid search for parameter evaluation...")
     
     # Create a grid of parameter combinations to evaluate
-    param_grid = list(itertools.product(DEATH_THRESHOLDS, TRANSFER_AMOUNTS))
+    param_grid = list(itertools.product(DEATH_THRESHOLDS, MAX_TRANSFERS))
     results_data = []
     
     # Use ProcessPoolExecutor to parallelize the evaluation of parameter sets
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        for dt, ta, avg_steps in executor.map(evaluate_parameter_set, param_grid):
-            print(f"Completed: death_threshold={dt:6.1f}, transfer_amount={ta:4.1f} -> Average Steps: {avg_steps:.1f}")
+        for dt, mt, avg_population in executor.map(evaluate_parameter_set, param_grid):
+            print(f"Completed: death_threshold={dt:6.1f}, max_transfer={mt:4.1f} -> Average Population: {avg_population:.3f}")
             results_data.append({
                 "death_threshold": dt,
-                "transfer_amount": ta,
-                "avg_majority_altruism_steps": avg_steps
+                "max_transfer": mt,
+                "avg_population": avg_population
             })
 
     # Save the results to a CSV file for further analysis
     df = pd.DataFrame(results_data)
+    DATA_DIR.mkdir(exist_ok=True)
     csv_path = DATA_DIR / "grid_search_results.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSimulation completed. Results saved to: {csv_path}")
