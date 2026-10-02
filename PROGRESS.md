@@ -13,7 +13,22 @@
 ## 9/15~10/2
 - 何をしたか
     - 先行研究
-        - Julián García, Evolution of parochial altruism by multilevel selection, Evolution and Human Behavior, volume32 277-287
+        - W. D. Hamilton. The genetical evolution of social behaviour. I. Journal of Theoretical Biology, Vol.7, pp. 1–16, 1964.
+            - 親族間の適応度における相互作用を考慮した遺伝的数学モデルに従えば、各個体は自らの包括的適応度を最大化しようとする行動を取る傾向にある。
+        - W. D. Hamilton. The genetical evolution of social behaviour. II. Journal of Theoretical Biology,Vol. 7, pp. 17–52, 1964.
+            - 膜翅目昆虫の社会的進化に関する仮説の提案
+            - 警告行動
+            - 昆虫における苦味成分の進化
+            - 細胞クローンや動物クローンと他のコロニー形態との違い
+            - 鳥類や昆虫における親の子育て行為が実際の子供にのみ向けられること
+            - 戦闘行為
+            - 寄生性昆虫の幼虫が宿主内でどのように振る舞うか
+            - 一夫一妻制や一夫多妻制と親の子育て行為の関係
+            - 植物の多卵巣と風や昆虫による受粉の関係
+        - D. S. Wilson. Altruism and organism: Disentangling the themes of multilevel selection theory. The American Naturalist, Vol. 150, pp. S122–S134, 1997.
+            - 集団レベルでの適応には利他性が必要
+            - 特定の特性に関しては、そのメンバー同士が血縁関係にあるわけでもなく、また、明らかに利他的な行動を取るわけでもない場合であっても、集団としての特性が存在。
+        - Julián García, Evolution of parochial altruism by multilevel selection, Evolution and Human Behavior, volume32 277-287, 2011
             - 自分の属する集団のメンバーを他人よりも優先する傾向は、多くの研究で確認されている（Bernhard et al., 2006a, Bernhard et al., 2006b, Hewstone et al., 2002）。
             - 狭義の利他主義に関する進化的な説明は、ごく最近になってようやく注目されるようになった（Bowles and Choi, 2004, Hammond and Axelrod, 2006, Choi and Bowles, 2007, Lehmann and Feldman, 2008）。
             - 無差別な利他主義の進化を説明するための様々なモデルが提案されてきた（例：Price, 1972, Hamilton, 1975, Frank, 1998, Lehmann and Keller, 2006, Nowak, 2006）。
@@ -26,14 +41,16 @@
                 1. 移動にかかるコストは、利他性が生まれるかどうか、また、利己性がどの程度速く克服されるかを決定。
                 2. 利他性にかかるコストは、2つの質的に異なる行動パターンのうち、どちらが選ばれるかを決定。社会的性質としての利他主義は、移動能力の進化的な低下によって生じる。この移動能力の低下により、生息地の過密化が進む。そして、このような状況の前後で、利他主義が進化的に発達する。
                 3. 一般的な予想とは逆に、進化的に安定したレベルの利他主義と移動能力の間には正の相関関係が見られることがある。
-
-
-
-
+        - Robert Kurzban, Maxwell N. Burton-Chellew, Stuart A. West, The Evolution of Altruism in Humans, Annual Review of Psychology, Vol. 66, pp. 575–599, 2015
+            - 利他主義という進化的な謎を解明しようとする試みの長い歴史について説明し、近年、さまざまな分野でなされた重要な研究成果にも焦点を当てる。
+        - Salahshour Mohammad, Evolution of altruistic rationality provides a solution to social dilemmas via rational reciprocity, Physical Review Research, vol. 7, 2025
+            - 進化的モデルを用いて、合理的なエージェントたちのコミュニティにおいて、どのようにして利他主義が進化し、協力が促進されるかを検討しました。
+            - その結果、均一な人口構成の場合でも、構造化された人口構成の場合でも、客観的に合理的なエージェントたちのコミュニティは、合理的な意思決定をするものの、自分の得られる利益について歪んだ（つまり主観的な）認識を持つ変異体によって容易に侵食されることがわかりました。
 
     - 卒論の「はじめに」の部分
-        - 自分の適応度を低下させ、他者に利益を与える「利他行動」が、なぜ自然選択によって排除されず進化・維持されるのか
+        - 自分自身の適応度を低下させ、他者に利益を与える「利他行動」が、なぜ自然選択によって排除されず進化・維持されるのか
         - 
+
     - エージェントの設定の変更点
         - -1.0~1.0の値を要素に持つ4×4の重み行列で初期化
         - 突然変異として5%の確率で-0.1~0.1の値が重み行列の各要素に加えられる
@@ -53,6 +70,7 @@
                 2. (0,1)の出力によって利他行動しない or するを決定（内部状態が0以上なら1,0未満なら0）
                 3. 内部状態をシグモイド関数によって活性化し、max_transfer=(1,2,...,10)に活性化値を掛けた値をtransfer_amountとする
     - 疑問
+        
 
 ## 9/8~9/15
 - 何をしたか
