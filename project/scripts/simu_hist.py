@@ -14,7 +14,7 @@ TOTAL_STEPS = 200000
 NUM_RUNS = 1
 
 # search space for parameters
-DEATH_THRESHOLDS = np.linspace(-300.0, -10.0, 20) 
+DEATH_THRESHOLDS = range(-100, 0, 5)
 
 def run_single_simulation(death_threshold):
     """Run a single simulation with specified parameters and return the history of the simulation."""

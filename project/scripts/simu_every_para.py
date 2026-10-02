@@ -14,8 +14,8 @@ EVAL_START_STEP = 100001
 NUM_RUNS = 1
 
 # search space for parameters
-DEATH_THRESHOLDS = range(-200, 0, 10)
-MAX_TRANSFERS = range(1, 11)
+DEATH_THRESHOLDS = range(-100, 0, 5)
+MAX_TRANSFERS = range(10, 31, 10)
 
 def run_single_simulation(death_threshold, max_transfer):
     """Return the mean population over steps 100,001 through 200,000."""
@@ -63,7 +63,7 @@ def main():
     # Save the results to a CSV file for further analysis
     df = pd.DataFrame(results_data)
     DATA_DIR.mkdir(exist_ok=True)
-    csv_path = DATA_DIR / "grid_search_results.csv"
+    csv_path = DATA_DIR / "grid_search_results_food=5.0.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nSimulation completed. Results saved to: {csv_path}")
 
