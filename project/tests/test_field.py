@@ -10,7 +10,7 @@ class FieldStepTests(unittest.TestCase):
         return Field(initial_agents=0, initial_food_prob=0, step_food_prob=0)
 
     def make_agent(self, x, y, energy, move=(1, 1), give=False, amount=0):
-        agent = Agent(x, y)
+        agent = Agent(x, y, mutation_rate=0.05)
         agent.energy = energy
         agent.decide_action = Mock(return_value=(move, give, amount))
         return agent

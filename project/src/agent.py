@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 class Agent:
-    def __init__(self, x, y, mutation_rate=0.05, weights=None):
+    def __init__(self, x, y, mutation_rate, weights=None):
         self.x = x
         self.y = y
         self.energy = 0.0

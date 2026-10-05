@@ -11,10 +11,9 @@ DATA_DIR.mkdir(exist_ok=True)
 
 # Simulation parameters
 TOTAL_STEPS = 200000
-NUM_RUNS = 1
 
 # search space for parameters
-DEATH_THRESHOLDS = range(-100, 0, 5)
+DEATH_THRESHOLDS = range(-200, 0, 5)
 
 def run_single_simulation(death_threshold):
     """Run a single simulation with specified parameters and return the history of the simulation."""
