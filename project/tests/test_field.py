@@ -92,6 +92,8 @@ class FieldStepTests(unittest.TestCase):
         self.assertAlmostEqual(receiver.energy, 0.8)
         self.assertEqual(receiver.age, 1)
         self.assertEqual(field.altruism_count, 1)
+        self.assertAlmostEqual(field.transfer_total, 0.9)
+        self.assertAlmostEqual(field.transfer_squared_total, 0.81)
 
     def test_dead_target_is_not_used_for_avoidance(self):
         field = self.make_field()
@@ -127,6 +129,22 @@ class FieldStepTests(unittest.TestCase):
         self.assertEqual(len(field.agents), 2)
         self.assertIs(field.agents[0], parent)
         self.assertEqual([agent.energy for agent in field.agents], [0, 0])
+
+    def test_transfer_moments_reset_each_step(self):
+        field = self.make_field()
+        donor = self.make_agent(0, 0, 10, give=True, amount=3)
+        receiver = self.make_agent(1, 0, 20)
+        field.agents = [donor, receiver]
+
+        field.step()
+        self.assertEqual(field.transfer_total, 3)
+        self.assertEqual(field.transfer_squared_total, 9)
+        donor.decide_action.return_value = ((1, 1), False, 0)
+        field.step()
+        self.assertEqual(field.transfer_total, 0)
+        self.assertEqual(field.transfer_squared_total, 0)
+        # The existing cumulative action counter remains compatible with callers.
+        self.assertEqual(field.altruism_count, 1)
 
 
 if __name__ == '__main__':

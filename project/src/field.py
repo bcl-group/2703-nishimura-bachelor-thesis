@@ -39,6 +39,8 @@ class Field:
         ]
         self.spawn_objects(prob=initial_food_prob)
         self.altruism_count = 0
+        self.transfer_total = 0.0
+        self.transfer_squared_total = 0.0
 
     def spawn_objects(self, prob=None):
         if prob is None:
@@ -81,6 +83,8 @@ class Field:
         return dir_x, dir_y
 
     def step(self):
+        self.transfer_total = 0.0
+        self.transfer_squared_total = 0.0
         initial_states = {
             agent: (agent.x, agent.y, agent.energy) for agent in self.agents
         }
@@ -123,6 +127,8 @@ class Field:
                 agent.energy -= actual_transfer
                 nearest.energy += actual_transfer
                 self.altruism_count += 1
+                self.transfer_total += actual_transfer
+                self.transfer_squared_total += actual_transfer ** 2
                 if agent.energy <= self.death_threshold:
                     self.agents.remove(agent)
                     continue
