@@ -1,8 +1,8 @@
 import random
 import numpy as np
-from src.agent import Agent
+from src.agent_v3 import AgentV3
 
-class Field:
+class FieldV3:
     def __init__(
         self,
         field_size=10,
@@ -10,7 +10,7 @@ class Field:
         mutation_rate=0.05,
         initial_food_prob=0.1,
         step_food_prob=0.003,
-        food_durability=5.0,
+        food_durability=3.0,
         energy_loss_per_step=0.1,
         reward_food=1.0,
         clone_threshold=100.0,
@@ -30,7 +30,7 @@ class Field:
 
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
-            Agent(
+            AgentV3(
                 random.randint(0, field_size - 1), 
                 random.randint(0, field_size - 1), 
                 mutation_rate=mutation_rate
@@ -108,12 +108,8 @@ class Field:
             other_energy = initial_states[nearest][2] if nearest else 0
             
             move_action, give_flag, transfer_amount = agent.decide_action(
-                self.clone_threshold, 
-                self.death_threshold, 
                 see_food,
-                initial_states[agent][2],
-                see_other, 
-                other_energy,
+                see_other,
                 max_transfer=self.max_transfer
             )
             actions.append((agent, tuple(move_action), give_flag, transfer_amount, nearest, nearest_food))
@@ -156,7 +152,7 @@ class Field:
         for agent in self.agents:
             if agent.energy >= self.clone_threshold:
                 agent.energy = 0
-                child = Agent(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
+                child = AgentV3(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
                 next_agents.extend([agent, child])
             else:
                 next_agents.append(agent)

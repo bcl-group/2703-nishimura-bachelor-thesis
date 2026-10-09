@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src import Field
+from src import FieldV2
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 TOTAL_STEPS = 200000
@@ -34,7 +34,7 @@ def run_single_simulation(death_threshold, mutation_rate, max_transfer, run_id=0
     seed = BASE_SEED + run_id
     random.seed(seed)
     np.random.seed(seed)
-    field = Field(
+    field = FieldV2(
         death_threshold=death_threshold,
         mutation_rate=mutation_rate,
         max_transfer=max_transfer,

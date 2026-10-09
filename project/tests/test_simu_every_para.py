@@ -86,6 +86,11 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(record['avg_transfer'], 3)
         self.assertTrue(np.isnan(record['std_transfer']))
 
+    def test_identical_transfers_in_one_step_have_zero_event_sd(self):
+        record = self.run_history(iter([(2, [])] * 4 + [(2, [3, 3])] + [(2, [])] * 3))
+        self.assertEqual(record['avg_transfer'], 3)
+        self.assertEqual(record['std_transfer'], 0)
+
     def test_one_evaluation_step_has_no_temporal_sample_sd(self):
         with patch.object(simulation, 'TOTAL_STEPS', 5), patch.object(simulation, 'EVAL_START_STEP', 5):
             field = Mock(agents=[None], altruism_count=0, transfer_total=0, transfer_squared_total=0)
@@ -109,6 +114,7 @@ class SimulationTests(unittest.TestCase):
         row = simulation.summarize_runs(records).iloc[0]
         self.assertEqual(row['avg_population'], 3)
         self.assertAlmostEqual(row['std_population'], np.sqrt(2))
+        self.assertEqual(row['avg_within_run_std_population'], 150)
         self.assertEqual(row['avg_altruism_count'], 0.5)
         self.assertAlmostEqual(row['std_altruism_count'], np.std([0.25, 0.75], ddof=1))
         self.assertEqual(row['avg_transfer'], 3)
@@ -126,6 +132,7 @@ class SimulationTests(unittest.TestCase):
                 records = pd.DataFrame({
                     'mutation_rate': [0] * 3, 'max_transfer': [5] * 3, 'death_threshold': [-70] * 3,
                     'run_id': range(3), 'avg_population': [0, 2, 4],
+                    'std_population': [1, 2, 3],
                     'avg_altruism_count': [0, 0, 0], 'avg_transfer': transfers,
                 })
                 row = simulation.summarize_runs(records).iloc[0]
@@ -193,7 +200,8 @@ class SimulationTests(unittest.TestCase):
         ])
         self.assertEqual(list(summary.columns), [
             'mutation_rate', 'max_transfer', 'death_threshold', 'num_runs',
-            'avg_population', 'std_population', 'avg_altruism_count', 'std_altruism_count',
+            'avg_population', 'std_population', 'avg_within_run_std_population',
+            'avg_altruism_count', 'std_altruism_count',
             'avg_transfer', 'std_transfer', 'transfer_valid_runs',
         ])
         self.assertEqual(len(raw[['mutation_rate', 'max_transfer', 'death_threshold', 'run_id']].drop_duplicates()), 200)

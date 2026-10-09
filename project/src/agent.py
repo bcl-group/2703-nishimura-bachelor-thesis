@@ -1,5 +1,4 @@
 import numpy as np
-import random
 
 class Agent:
     def __init__(self, x, y, mutation_rate, weights=None):
@@ -16,7 +15,7 @@ class Agent:
             
     def mutate(self, weights):
         mutation_mask = np.random.rand(4, 4) < self.mutation_rate
-        mutation_amounts = np.random.uniform(-0.1, 0.1, (4, 4))
+        mutation_amounts = np.random.uniform(-0.2, 0.2, (4, 4))
         return weights + (mutation_mask * mutation_amounts)
 
     def decide_action(self, clone_threshold, death_threshold, see_food, my_energy, see_other, other_energy, max_transfer):

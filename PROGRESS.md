@@ -10,6 +10,16 @@
 | **1月** | 後期末 | 卒業論文**提出**、発表練習 |  |
 | **2月** |  | **卒論発表会** | |	
 
+## 10/3~10/9
+- 何をしたか
+    - エージェントの設定の変更点
+        - 1 or 0を要素に持つ4×4の重み行列で初期化
+        - 突然変異として5%の確率で重み行列の各要素が反転
+        ![alt text](project/images/summary_comparison/altruism_count_by_death_threshold.png)
+        ![alt text](project/images/summary_comparison/population_by_death_threshold.png)
+
+
+
 ## 9/15~10/2
 - 何をしたか
     - 先行研究
@@ -62,8 +72,7 @@
                     4. その場にとどまる
                 2. (0,1)の出力によって利他行動しない or するを決定（内部状態が0以上なら1,0未満なら0）
                 3. 内部状態をシグモイド関数によって活性化し、max_transfer=(1,2,...,10)に活性化値を掛けた値をtransfer_amountとする
-    - 疑問
-        
+
 
 ## 9/8~9/15
 - 何をしたか

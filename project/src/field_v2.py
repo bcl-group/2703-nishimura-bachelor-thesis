@@ -1,8 +1,8 @@
 import random
 import numpy as np
-from src.agent import Agent
+from src.agent_v2 import AgentV2
 
-class Field:
+class FieldV2:
     def __init__(
         self,
         field_size=10,
@@ -30,7 +30,7 @@ class Field:
 
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
-            Agent(
+            AgentV2(
                 random.randint(0, field_size - 1), 
                 random.randint(0, field_size - 1), 
                 mutation_rate=mutation_rate
@@ -156,7 +156,7 @@ class Field:
         for agent in self.agents:
             if agent.energy >= self.clone_threshold:
                 agent.energy = 0
-                child = Agent(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
+                child = AgentV2(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
                 next_agents.extend([agent, child])
             else:
                 next_agents.append(agent)

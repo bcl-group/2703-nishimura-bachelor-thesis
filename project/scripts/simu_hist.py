@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from src import Field
+from src import FieldV3
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -13,11 +13,11 @@ DATA_DIR.mkdir(exist_ok=True)
 TOTAL_STEPS = 200000
 
 # search space for parameters
-DEATH_THRESHOLDS = range(-200, 0, 5)
+DEATH_THRESHOLDS = range(-100, 0, 15)
 
 def run_single_simulation(death_threshold):
     """Run a single simulation with specified parameters and return the history of the simulation."""
-    field = Field(
+    field = FieldV3(
         death_threshold=death_threshold,
     )
     
