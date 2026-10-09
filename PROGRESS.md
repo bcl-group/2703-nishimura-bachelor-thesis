@@ -15,8 +15,8 @@
     - エージェントの設定の変更点
         - 1 or 0を要素に持つ4×4の重み行列で初期化
         - 突然変異として5%の確率で重み行列の各要素が反転
-        ![alt text](project/images/summary_comparison/altruism_count_by_death_threshold.png)
-        ![alt text](project/images/summary_comparison/population_by_death_threshold.png)
+    ![alt text](project/images/summary_comparison/altruism_count_by_death_threshold.png)
+    ![alt text](project/images/summary_comparison/population_by_death_threshold.png)
 
 
 
