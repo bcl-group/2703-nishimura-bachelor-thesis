@@ -1,0 +1,52 @@
+{
+  "experiment_name": "exp_v3_heatmap",
+  "agent_class": "AgentV3",
+  "field_class": "FieldV3",
+  "simulation": {
+    "total_steps": 200000,
+    "evaluation_steps": 10000,
+    "num_runs": 5,
+    "base_seed": 43,
+    "workers": 5
+  },
+  "grid_parameters": {
+    "death_threshold": [
+      -200,
+      -190,
+      -180,
+      -170,
+      -160,
+      -150,
+      -140,
+      -130,
+      -120,
+      -110,
+      -100,
+      -90,
+      -80,
+      -70,
+      -60,
+      -50,
+      -40,
+      -30,
+      -20,
+      -10
+    ],
+    "transfer_amount": [
+      1,
+      5,
+      10
+    ]
+  },
+  "fixed_field_parameters": {
+    "field_size": 10,
+    "initial_agents": 20,
+    "initial_food_prob": 0.1,
+    "step_food_prob": 0.003,
+    "food_durability": 5.0,
+    "energy_loss_per_step": 0.1,
+    "reward_food": 1.0,
+    "clone_threshold": 100.0,
+    "mutation_rate": 0.05
+  }
+}

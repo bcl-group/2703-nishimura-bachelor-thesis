@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from src.agent import Agent
-from src.field import Field
+from src.agents import Agent
+from src.fields import Field
 
 
 class FieldStepTests(unittest.TestCase):
@@ -30,7 +30,7 @@ class FieldStepTests(unittest.TestCase):
         self.assertAlmostEqual(donor.energy, 6.9)
         self.assertAlmostEqual(receiver.energy, 22.9)
 
-    def test_avoidance_uses_target_position_before_movement(self):
+    def test_approach_uses_target_position_before_movement(self):
         for reverse in (False, True):
             with self.subTest(reverse=reverse):
                 field = self.make_field()
@@ -40,8 +40,8 @@ class FieldStepTests(unittest.TestCase):
 
                 field.step()
 
-                self.assertEqual((first.x, first.y), (9, 0))
-                self.assertEqual((second.x, second.y), (2, 0))
+                self.assertEqual((first.x, first.y), (1, 0))
+                self.assertEqual((second.x, second.y), (0, 0))
 
     def test_metabolic_deaths_cannot_act_or_be_rescued(self):
         for energy in (-49.95, -49.9):
@@ -101,7 +101,7 @@ class FieldStepTests(unittest.TestCase):
         survivor = self.make_agent(1, 0, 0, move=(1, 0))
         field.agents = [dying, survivor]
         # With no living target, avoidance falls back to a random move.
-        with patch('src.field.random.choice', side_effect=[survivor, dying, 0, 0]):
+        with patch('src.fields.field.random.choice', side_effect=[survivor, dying, 0, 0]):
             field.step()
 
         self.assertEqual(field.agents, [survivor])
@@ -143,8 +143,8 @@ class FieldStepTests(unittest.TestCase):
         field.step()
         self.assertEqual(field.transfer_total, 0)
         self.assertEqual(field.transfer_squared_total, 0)
-        # The existing cumulative action counter remains compatible with callers.
-        self.assertEqual(field.altruism_count, 1)
+        # Action and transfer counters describe the current step.
+        self.assertEqual(field.altruism_count, 0)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,81 @@
+This is e-upTeX, Version 3.141592653-p4.1.0-u1.29-230214-2.6 (utf8.uptex) (TeX Live 2023/Debian) (preloaded format=uplatex 2026.7.23)  9 OCT 2026 17:20
+entering extended mode
+ restricted \write18 enabled.
+ file:line:error style messages enabled.
+ %&-line parsing enabled.
+**thesis.tex
+(./thesis.tex
+pLaTeX2e <2023-02-14u04>+1, based on
+LaTeX2e <2023-11-01> patch level 1
+L3 programming layer <2024-01-22>
+(/usr/share/texlive/texmf-dist/tex/latex/jlreq/jlreq.cls
+Document Class: jlreq 2023/06/19 jlreq
+(/usr/share/texlive/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty
+(/usr/share/texlive/texmf-dist/tex/latex/l3kernel/expl3.sty
+Package: expl3 2024-01-22 L3 programming layer (loader) 
+
+(/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-dvipdfmx.def
+File: l3backend-dvipdfmx.def 2024-01-04 L3 backend support: dvipdfmx
+\g__graphics_track_int=\count186
+\l__pdf_internal_box=\box68
+\g__pdf_backend_object_int=\count187
+\g__pdf_backend_annotation_int=\count188
+\g__pdf_backend_link_int=\count189
+))
+Package: l3keys2e 2023-10-10 LaTeX2e option processing using LaTeX3 keys
+)
+(/usr/share/texlive/texmf-dist/tex/latex/etoolbox/etoolbox.sty
+Package: etoolbox 2020/10/05 v2.5k e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count190
+)
+(/usr/share/texlive/texmf-dist/tex/latex/jlreq/jlreq-helpers.sty
+Package: jlreq-helpers 2023/06/19 jlreq-helpers
+\jlreq@tempcnta=\count191
+\jlreq@tempcntb=\count192
+\jlreq@tempcntc=\count193
+\jlreq@tempdima=\dimen156
+\jlreq@tempdimb=\dimen157
+\jlreq@tempdimc=\dimen158
+\jlreq@tempskipa=\skip48
+\jlreq@tempskipb=\skip49
+\jlreq@tempskipc=\skip50
+\jlreq@tempboxa=\box69
+\jlreq@tempboxb=\box70
+\jlreq@tempboxc=\box71
+\jlreq@resultdimen=\dimen159
+\jlreq@resultskip=\skip51
+\jlreq@resultbox=\box72
+\jlreq@resultcnt=\count194
+\jlreq@reference@count=\count195
+\jlreq@currentpage=\count196
+)
+\l__jlreq_tmpa_int=\count197
+\l__jlreq_tmpa_dim=\dimen160
+\l_jlreq_tmpa_skip=\skip52
+\l_jlreq_tmpa_box=\box73
+\l_jlreq_tmpb_box=\box74
+\l_jlreq_tmpc_box=\box75
+
+jlreq guessed engine: uplatex
+
+! LaTeX Error: File `everyhook.sty' not found.
+
+Type X to quit or <RETURN> to proceed,
+or enter new name. (Default extension: sty)
+
+Enter file name: 
+/usr/share/texlive/texmf-dist/tex/latex/jlreq/jlreq.cls:464: Emergency stop.
+<read *> 
+         
+l.464   \def
+            \jlreq@jfmname@prefix{}  
+Here is how much of TeX's memory you used:
+ 980 strings out of 475989
+ 20955 string characters out of 5789715
+ 1915820 words of memory out of 5000000
+ 23218 multiletter control sequences out of 15000+600000
+ 560710 words of font info for 54 fonts, out of 8000000 for 9000
+ 264 hyphenation exceptions out of 8191
+ 79i,0n,93p,394b,20s stack positions out of 10000i,1000n,20000p,200000b,200000s
+
+No pages of output.

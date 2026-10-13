@@ -1,0 +1,136 @@
+\documentclass[a4j, 12pt]{jsreport}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage[dvipdfmx]{color}
+\usepackage{amsmath}
+\usepackage{ascmac}
+\usepackage{here}
+\usepackage{bm}
+\usepackage{mathtools}
+\usepackage{url}
+\usepackage{cite}
+%hypterlinkの設定
+\usepackage[dvipdfmx]{hyperref}
+\usepackage{pxjahyper}
+\usepackage{multicol}
+\usepackage{afterpage}
+%サブキャプション, subrefformatはsubref表示のフォーマットを指定(parensは括弧付き, simpleは括弧なし)
+\usepackage[subrefformat=simple]{subcaption}
+% サブキャプションの設定（左詰め，キャプションが1行で自動的に中央寄せになることをoff）
+\captionsetup[subfigure]{labelformat=simple, font={bf, Large}, justification=raggedright, singlelinecheck=off} % 小文字
+% \captionsetup[subfigure]{labelformat=simple, font={sc, Large}, justification=raggedright, singlelinecheck=off} % 大文字
+
+% % subcapのラベルを大文字に変更（小文字にするときは\alph）← captionsetupのfontで設定してもrefで参照したときに小文字になる．．．
+% \renewcommand{\thesubfigure}{\alph{subfigure}} 
+% \usepackage{graphicx}
+% \usepackage[FIGTOPCAP,nooneline]{subfigure}
+
+
+\hypersetup{% hyperrefオプションリスト
+    setpagesize=false,
+    bookmarksnumbered=true,%ブックマークを作成
+    bookmarksopen=true,%ブックマークを開く
+    colorlinks=true,%カラーリンクを使用
+    linkcolor=black, %内部参照リンクカラー
+    citecolor=blue, %文献カラー
+    % filecolor=, %ローカルファイル参照リンクカラー
+    urlcolor=blue,
+}
+
+% chapterの改行を削除
+\makeatletter
+\def\@makechapterhead#1{%
+    % \vspace*{2\Cvs}% 欧文は50pt → 少タイトルの上の余白が広いのでコメントアウト
+    {\parindent \z@ \raggedright \normalfont
+    \ifnum \c@secnumdepth >\m@ne
+    \huge\headfont \@chapapp\thechapter\@chappos
+    %% \par\nobreak
+    %% \vskip \Cvs % 欧文は20pt
+    \fi
+    　\interlinepenalty\@M%先頭の空白で、章とチャプター名の間に空白が挿入される
+    \huge \headfont #1\par\nobreak
+    \vskip 3\Cvs}
+} % 欧文は40pt
+\makeatother
+
+
+\begin{document}
+
+    \begin{titlepage}
+        \begin{center}
+            \vspace*{1cm}
+            \thispagestyle{empty}
+            \LARGE {令和8年度}\\
+            
+            \vspace*{1cm}
+            \Huge {卒業論文}\\
+            
+            \vspace*{2cm}
+            \huge {利他行動の発現理由}\\
+            
+            \vspace*{4cm}
+            \LARGE {指導教員~~~西井~淳~教授}\\
+            
+            \vspace*{1cm}
+            \Large {山口大学　理学部\\物理・情報科学科　情報科学コース}\\
+            
+            \vspace*{0.5cm}
+            \LARGE {西村~優姿}
+        \end{center}
+    \end{titlepage}
+
+    \graphicspath{{img/}}
+    % \graphicspath{{img/results}}
+    
+    % 目次のページ数をローマ数字似変更
+    \setcounter{page}{0}
+    \setcounter{tocdepth}{2}
+    \pagenumbering{roman}
+    \tableofcontents
+    
+    
+    % ページ番号の再設定
+    \chapter{はじめに}\label{chap:intro}
+    \pagenumbering{arabic}
+    \setcounter{page}{1}
+
+    \input{chap1_intro/intro.tex}\label{chap1:intro}
+
+
+    \chapter{シミュレーション実験1}\label{chap2:simu1}
+    \input{chap2_simu1/simu1.tex}
+    
+
+    \chapter{シミュレーション実験2}\label{chap3:simu2}
+    \input{chap3_simu2/simu2.tex}
+
+
+    \chapter{}\label{chap4:high-dimentional_feedback_control_model}
+    \input{chap4_highDimFeedbackModel/highDimFeedbackModel.tex}
+
+
+    % \chapter{考察}\label{chap:discussion}
+    % \input{chap6_summary/summary.tex}
+
+
+    \chapter{まとめ}\label{chap:summary}
+    \input{chap5_summary/summary.tex}
+
+    \chapter*{謝辞}
+    \addcontentsline{toc}{chapter}{謝辞}
+    本研究を進めるにあたり，西井淳教授には専門的知識から予稿集や論文の書き方，研究の進め方に至るまで多大なご指導ご鞭撻を賜りました．
+    ここに深く感謝申し上げます．
+    小林泰良助教には研究に必要な知識の習得や本修士論文を執筆するにあたり，様々なご助言・ご協力をいただきました．
+    ここに御礼申し上げます．
+    また，本修士論文の作成にご協力いただきました生体情報システム研究室の皆様に
+    感謝申し上げます．
+
+    % \appendix
+    % \input{appendix/appendix.tex}
+
+    \bibliographystyle{junsrt}
+    % \nocite{*}
+    \bibliography{reference}
+    
+
+
+\end{document}

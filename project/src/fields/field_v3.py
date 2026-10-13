@@ -1,8 +1,8 @@
 import random
 import numpy as np
-from src.agent import Agent
+from src.agents.agent_v3 import AgentV3
 
-class Field:
+class FieldV3:
     def __init__(
         self,
         field_size=10,
@@ -15,7 +15,7 @@ class Field:
         reward_food=1.0,
         clone_threshold=100.0,
         death_threshold=-50.0,
-        max_transfer=10.0
+        transfer_amount=1.0
 
     ):
         self.field_size = field_size
@@ -26,11 +26,11 @@ class Field:
         self.reward_food = reward_food
         self.clone_threshold = clone_threshold
         self.death_threshold = death_threshold
-        self.max_transfer = max_transfer
+        self.transfer_amount = transfer_amount
 
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
-            Agent(
+            AgentV3(
                 random.randint(0, field_size - 1), 
                 random.randint(0, field_size - 1), 
                 mutation_rate=mutation_rate
@@ -39,8 +39,8 @@ class Field:
         ]
         self.spawn_objects(prob=initial_food_prob)
         self.altruism_count = 0
-        self.transfer_total = 0.0
-        self.transfer_squared_total = 0.0
+        self.acting_agent_count = 0
+        self.positive_altruism_count = 0
 
     def spawn_objects(self, prob=None):
         if prob is None:
@@ -84,10 +84,10 @@ class Field:
 
     def step(self):
         self.altruism_count = 0
-        self.transfer_total = 0.0
-        self.transfer_squared_total = 0.0
+        self.acting_agent_count = 0
+        self.positive_altruism_count = 0
         initial_states = {
-            agent: (agent.x, agent.y, agent.energy) for agent in self.agents
+            agent: (agent.x, agent.y, agent.altruism_level) for agent in self.agents
         }
         surviving_agents = []
         for agent in self.agents:
@@ -96,6 +96,7 @@ class Field:
             if agent.energy > self.death_threshold:
                 surviving_agents.append(agent)
         self.agents = surviving_agents
+        self.acting_agent_count = len(self.agents)
 
         actions = []
         
@@ -103,32 +104,28 @@ class Field:
             nearest = self.get_nearest_agent(agent)
             nearest_food = self.get_nearest_food(agent)
 
-            see_other = 1 if nearest else 0
+            see_other = 1 if nearest is not None else 0
             see_food = 1 if nearest_food is not None else 0
-            other_energy = initial_states[nearest][2] if nearest else 0
-            
-            move_action, give_flag, transfer_amount = agent.decide_action(
-                self.clone_threshold, 
-                self.death_threshold, 
-                see_food,
-                initial_states[agent][2],
-                see_other, 
-                other_energy,
-                max_transfer=self.max_transfer
-            )
-            actions.append((agent, tuple(move_action), give_flag, transfer_amount, nearest, nearest_food))
+            other_altruism_level = nearest.altruism_level if nearest is not None else 0
 
-        for agent, move_action, give_flag, transfer_amount, nearest, nearest_food in actions:
+            move_action = agent.decide_action(
+                see_food,
+                see_other, 
+                other_altruism_level
+            )
+            actions.append((agent, tuple(move_action), nearest, nearest_food))
+
+        for agent, move_action, nearest, nearest_food in actions:
             if nearest is not None and nearest.energy <= self.death_threshold:
                 nearest = None
-
-            if give_flag and nearest is not None and transfer_amount > 0:
-                actual_transfer = min(transfer_amount, agent.energy - self.death_threshold)
+            
+            if agent.altruism_level == 1 and nearest is not None:
+                actual_transfer = min(self.transfer_amount, agent.energy)
                 agent.energy -= actual_transfer
                 nearest.energy += actual_transfer
-                self.altruism_count += 1
-                self.transfer_total += actual_transfer
-                self.transfer_squared_total += actual_transfer ** 2
+                if actual_transfer > 0:
+                    self.altruism_count += 1
+                    self.positive_altruism_count += 1
                 if agent.energy <= self.death_threshold:
                     self.agents.remove(agent)
                     continue
@@ -156,7 +153,7 @@ class Field:
         for agent in self.agents:
             if agent.energy >= self.clone_threshold:
                 agent.energy = 0
-                child = Agent(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
+                child = AgentV3(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
                 next_agents.extend([agent, child])
             else:
                 next_agents.append(agent)

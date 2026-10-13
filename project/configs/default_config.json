@@ -1,0 +1,33 @@
+{
+  "experiment_name": "default_config",
+  "agent_class": "Agent",
+  "field_class": "Field",
+  "simulation": {
+    "total_steps": 200000,
+    "eval_start_step": 100001,
+    "num_runs": 1,
+    "base_seed": 42,
+    "workers": 1
+  },
+  "grid_parameters": {
+    "death_threshold": [
+      -50
+    ],
+    "transfer_amount": [
+      10
+    ],
+    "mutation_rate": [
+      0.05
+    ]
+  },
+  "fixed_field_parameters": {
+    "field_size": 10,
+    "initial_agents": 20,
+    "initial_food_prob": 0.1,
+    "step_food_prob": 0.003,
+    "food_durability": 5.0,
+    "energy_loss_per_step": 0.1,
+    "reward_food": 1.0,
+    "clone_threshold": 100.0
+  }
+}

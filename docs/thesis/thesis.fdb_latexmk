@@ -1,0 +1,21 @@
+# Fdb version 4
+["dvipdf"] 0 "thesis.dvi" "thesis.pdf" "thesis" 0 -1
+  "thesis.dvi" 0 -1 0 "latex"
+  (generated)
+  "thesis.pdf"
+  (rewritten before read)
+["latex"] 1791534010.13512 "thesis.tex" "thesis.dvi" "thesis" 1791534047.98947 2
+  "/usr/share/texlive/texmf-dist/tex/latex/etoolbox/etoolbox.sty" 1601931149 46845 3b58f70c6e861a13d927bff09d35ecbc ""
+  "/usr/share/texlive/texmf-dist/tex/latex/jlreq/jlreq-helpers.sty" 1687118641 21198 3aed3f3ab8db7940ebefeeaf4bdd409b ""
+  "/usr/share/texlive/texmf-dist/tex/latex/jlreq/jlreq.cls" 1687118641 287749 681857bc8c60cccdd8ca00cab814b93c ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-dvipdfmx.def" 1704491087 29970 cc29e6fb42ffc1662cd8727aa6328d86 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3kernel/expl3.sty" 1705955748 6565 cfd9fd0a1d5f5ad985151778771ff7a9 ""
+  "/usr/share/texlive/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty" 1696969620 4674 15ab6bdfc97f65b00e59c2867851f715 ""
+  "everyhook.sty" 0 -1 0 ""
+  "thesis.aux" 1791533991.13566 32 3985256e7290058c681f74d7a3565a19 "latex"
+  "thesis.tex" 1791533964.97583 1919 39e4d1b2aff914f9608341bfcbd527cb ""
+  (generated)
+  "thesis.aux"
+  "thesis.dvi"
+  "thesis.log"
+  (rewritten before read)
