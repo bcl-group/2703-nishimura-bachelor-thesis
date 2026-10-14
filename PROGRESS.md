@@ -50,6 +50,7 @@
             - 利他行動1回のエネルギー譲渡量:5
         - 結果
             - [text](project/notebooks/analysis_exp_v3.ipynb)
+            - [text](project/notebooks/analysis_exp_v3.ipynb)
 
 - 困っていること
     - 利他行動をする条件として、「利他行動レベルが1」and「近傍に他者が存在するか」としている。
