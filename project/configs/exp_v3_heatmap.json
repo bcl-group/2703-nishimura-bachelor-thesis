@@ -6,7 +6,7 @@
     "total_steps": 200000,
     "evaluation_steps": 10000,
     "num_runs": 10,
-    "base_seed": 43,
+    "base_seed": 42,
     "workers": 5
   },
   "grid_parameters": {
@@ -33,10 +33,15 @@
       -10
     ],
     "transfer_amount": [
+      1,
       2,
+      3,
       4,
+      5,
       6,
+      7,
       8,
+      9,
       10
     ]
   },

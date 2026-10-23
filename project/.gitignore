@@ -3,3 +3,6 @@ __pycache__/
 /data/
 /project_env/
 .ipynb_checkpoints/
+
+# 変更(v7): nvccで生成するCUDA拡張のビルドキャッシュ
+.cache/cuda_v7/

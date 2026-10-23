@@ -104,3 +104,81 @@ field_class = get_field_class("FieldV2")
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## v6（CPUテンソル）・v7（CUDA）
+
+変更(v6/v7): v6はPyTorchのCPUテンソル版、v7はCUDA C++（`.cu`）版です。
+v7はPyTorchをテンソルの保持・乱数生成・ソート・累積和・統計とPython連携に使用し、
+近傍探索・行動・移動・餌の競合・移譲集計・死亡・繁殖・餌生成をCUDAカーネルで実行します。
+v5以前の利用にはPyTorchは不要です。
+新しい版では個体リスト`field.agents`の代わりに、`positions`（N×2）、
+`energies`（N、float64）、`ages`（N）、`weights`（N×2×4）のテンソルを保持します。
+個体数は`field.population`、遺伝子の集計は`field.genotype_counts()`で取得します。
+`step()`の戻り値は死亡年齢のテンソルです。
+`AgentV6` / `AgentV7`は個体オブジェクトではなく、行動・突然変異の一括計算を担当します。
+
+利用先の仮想環境にPyTorchを別途導入してください。CPU版は`python -m pip install torch`、
+CUDA版は[公式インストール案内](https://pytorch.org/get-started/locally/)でOSとドライバーに
+対応するCUDA版を選びます。RTX 3060（12 GB）1台を想定しています。
+
+```bash
+python -m scripts.simu_every_para_up_v6 --config configs/exp_v6.json
+python -m scripts.simu_every_para_up_v7 --config configs/exp_v7.json
+python -m unittest discover -s tests -p 'test_field_v6_v7.py' -v
+```
+
+設定の変更点は、版番号・実験名・`simulation.workers: 1`と
+`simulation.device`（v6: `cpu`、v7: `cuda:0`）です。
+JSONはコメント非対応なので、設定の変更理由はここに記載しています。
+`device`と乱数シードは`simulation`で指定し、フィールド引数には指定しません。
+条件・試行は逐次実行し、各ステップ内の個体処理を並列化します。
+CUDAが利用できない場合は出力ファイルの作成前にエラーになります。
+
+餌の耐久度、同期更新、移譲、死亡・繁殖、CSVの列と記録間隔はv5と共通です。
+乱数生成器が異なるため、v5・v6・v7の同じシードの軌跡は一致しません。
+runnerは決定的演算を有効にし、同一版・同一ソフトウェア／機器構成での再現性を
+検証対象とします。エネルギーと統計は倍精度です。
+GPUへの入力・状態はデバイス上に保持しますが、可変個体数の圧縮・繁殖時には
+CPU/GPU同期が発生します（v7では出力個体数・死亡数を取得する際）。
+初期20個体などの小規模条件では起動・同期の費用が上回るため、高速化は保証しません。
+時間表示には初期化・記録・GPU計算完了待ちが含まれます。
+
+GPU未搭載またはPyTorch未導入の環境では、該当テストはスキップされます。
+実機での比較時は、各版の設定で条件・ステップ数を揃え、ウォームアップ後に複数回測定してください。
+既定の10万ステップ実験は自動実行しません。
+
+### v7のCUDAソースとビルド
+
+変更(v7): 計算本体は`src/cuda/simulation_v7.cu`です。
+`src/cuda/bindings_v7.cpp`がPythonへの接続を定義し、
+`src/fields/field_v7.py`からカーネルを起動します。
+`src/agents/agent_v7.py`の行動・突然変異APIも同じ`.cu`を使用します。
+v6はCPUテンソル版のままです。
+
+v7の実行には、CUDA対応PyTorchに加えて以下が必要です。
+
+- NVIDIAドライバーとCUDA対応GPU
+- PyTorchのCUDAバージョンと互換性のあるCUDA Toolkit（`nvcc`を含む）
+- CUDA Toolkitが対応するC++コンパイラー（LinuxではGCC/G++）
+- Ninja（`python -m pip install ninja`）
+
+CUDA対応PyTorchだけのインストールでは`nvcc`は用意されません。
+`python -c "import torch; print(torch.version.cuda)"`と`nvcc --version`で確認します。
+Toolkitが自動検出されない場合は、そのインストール先を`CUDA_HOME`に設定してください。
+
+従来と同じv7の実行コマンドで、初回に`.cu`と`.cpp`を自動コンパイルします。
+生成物は`.cache/cuda_v7/`に保存し、次回以降は再利用します。
+必要なら`MAX_JOBS=1`でコンパイル時の並列数を制限できます。
+ビルド失敗時にテンソル版へ戻す処理はありません。
+高速近似演算は使用せず、CUDAコンパイル時も`--fmad=false`で計算順序を維持します。
+この`.cu`はPyTorch拡張としてビルドするソースで、単体の実行ファイルではありません。
+
+```bash
+python -m unittest discover -s tests -p 'test_cuda_v7_source.py' -v
+python -m unittest discover -s tests -p 'test_field_v6_v7.py' -v
+```
+
+前者は`.cu`のカーネル本体を通常C++として実行する計算式のテストで、CUDA不要です。
+CUDAコンパイル・カーネル起動・デバイス連携は、後者のGPUテストで検証します。
+今回の開発環境にはPyTorch・`nvcc`・利用可能なGPUがないため、
+CUDA拡張のビルドとGPU上での動作・性能は未検証です。
