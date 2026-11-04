@@ -11,7 +11,7 @@ import unittest
 SOURCE = Path(__file__).resolve().parents[1] / 'src/cuda/simulation_v7.cu'
 
 
-@unittest.skipUnless(shutil.which('c++'), 'C++ compiler is unavailable')
+@unittest.skipUnless(SOURCE.exists() and shutil.which('c++'), 'v7 CUDA source or C++ compiler is unavailable')
 class NativeKernelLogicTests(unittest.TestCase):
     def test_actual_cuda_kernel_formulas(self):
         source = SOURCE.read_text()

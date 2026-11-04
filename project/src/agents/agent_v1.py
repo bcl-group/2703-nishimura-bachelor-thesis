@@ -1,6 +1,9 @@
 import numpy as np
 
+
 class AgentV1:
+    weight_shape = (2, 2)
+
     def __init__(self, x, y, mutation_rate, weights=None):
         self.x = x
         self.y = y
@@ -8,21 +11,21 @@ class AgentV1:
         self.age = 0
         self.altruism_level = 0
         self.mutation_rate = mutation_rate
-        
+
         if weights is None:
-            self.weights = np.random.randint(0, 2, (2, 2))
+            self.weights = np.random.randint(0, 2, self.weight_shape)
         else:
             self.weights = self.mutate(weights)
-            
+
     def mutate(self, weights):
-        mutation_mask = np.random.rand(2, 2) < self.mutation_rate
+        mutation_mask = np.random.rand(*self.weight_shape) < self.mutation_rate
         new_weights = np.where(mutation_mask, 1 - weights, weights)
         return new_weights.astype(int)
 
     def decide_action(self, see_food, see_other):
-        input_vec = np.array([see_food, see_other])
-        raw_output = np.dot(self.weights, input_vec) % 2
-    
-        move_action = raw_output[0:2] 
-    
-        return move_action
+        output = self.action_from_weights(self.weights, see_food, see_other)
+        return output[:2]
+
+    @staticmethod
+    def action_from_weights(weights, *observations):
+        return np.dot(weights, observations) % 2

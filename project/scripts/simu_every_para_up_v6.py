@@ -4,7 +4,7 @@ import itertools
 import inspect
 import json
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from decimal import Decimal
 
@@ -31,72 +31,20 @@ def run_single_simulation(
     field_class, param_combination, sim_config, fixed_params, run_id=0,
     time_series_records=None, genotype_records=None,
 ):
-    import torch
-    total_steps = sim_config["total_steps"]
-    eval_start_step = sim_config["eval_start_step"]
-    seed = sim_config["base_seed"] + run_id
-    # 変更(v6/v7): 乱数生成器はFieldごとに分離し、統計も同じデバイスで蓄積する。
-    with deterministic_execution():
-        field = field_class(**{**fixed_params, **param_combination},
-                            device=sim_config.get("device", "cpu"), seed=seed)
-        stats = torch.zeros(7, dtype=torch.float64, device=field.device)
-        interval = torch.zeros(2, dtype=torch.float64, device=field.device)
-        record_series = run_id == 0 and time_series_records is not None
-        record_genotypes = run_id == 0 and genotype_records is not None
-
-        def record_sample(step, population):
-            identifiers = {**param_combination, "run_id": run_id, "seed": seed, "step": step}
-            if record_series:
-                denominator, altruism = interval.cpu().tolist()
-                time_series_records.append({**identifiers, "population": population,
-                    "altruism_count": int(altruism),
-                    "altruism_rate": altruism / denominator if denominator > 0 else None})
-            if record_genotypes and population:
-                genotype_records.extend(
-                    {**identifiers, "genotype": code, "population": count}
-                    for code, count in field.genotype_counts().items())
-
-        for step in range(1, total_steps + 1):
-            deaths = field.step()
-            population = field.population
-            if record_series or record_genotypes:
-                interval[0] += population
-                interval[1] += field.altruism_count
-                if step == 1 or step % 1000 == 0:
-                    record_sample(step, population)
-                    interval.zero_()
-            if step >= eval_start_step:
-                stats[0] += population
-                stats[1] += population ** 2
-                stats[2] += field.altruism_count
-                stats[3] += field.altruism_count.to(torch.float64).square()
-                stats[4] += deaths.numel()
-                death_values = deaths.to(torch.float64)
-                stats[5] += death_values.sum()
-                stats[6] += death_values.square().sum()
-            if population == 0:
-                if record_series or record_genotypes:
-                    for sample_step in range((step // 1000 + 1) * 1000, total_steps + 1, 1000):
-                        record_sample(sample_step, 0)
-                        interval.zero_()
-                break
-        # 変更(v7): 最終転送はCUDAの完了待ちも兼ねるため、実行時間にGPU演算を含む。
-        values = stats.cpu().tolist()
-    evaluation_steps = total_steps - eval_start_step + 1
-    avg_population, std_population = mean_and_std(values[0], values[1], evaluation_steps)
-    avg_altruism, std_altruism = mean_and_std(values[2], values[3], evaluation_steps)
-    avg_age, std_age = mean_and_std(values[5], values[6], values[4])
-    return {"run_id": run_id, "seed": seed,
-            "avg_population": avg_population, "std_population": std_population,
-            "avg_altruism_count": avg_altruism, "std_altruism_count": std_altruism,
-            "avg_altruism_rate": avg_altruism / avg_population if avg_population > 0 else None,
-            "avg_death_age": avg_age, "std_death_age": std_age, **param_combination}
+    from .batch_runner_v6 import run_batch
+    records, series, genotypes = run_batch(field_class, [(param_combination, run_id)],
+        {"device": "cpu", **sim_config}, fixed_params)
+    if run_id == 0 and time_series_records is not None:
+        time_series_records.extend(series)
+    if run_id == 0 and genotype_records is not None:
+        genotype_records.extend(genotypes)
+    return records[0]
 
 
 @contextmanager
 def deterministic_execution():
     import torch
-    # 変更(v6/v7): CUDAの加算も決定的実装を要求し、呼出元の設定は終了時に復元する。
+    # Require deterministic GPU reductions and restore the caller settings.
     previous = torch.are_deterministic_algorithms_enabled()
     warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     torch.use_deterministic_algorithms(True)
@@ -130,39 +78,26 @@ def summarize_runs(records, grid_param_keys):
     return summary
 
 def run_condition(args_tuple):
-    field_class, param_combination, sim_config, fixed_params = args_tuple
-    num_runs = sim_config["num_runs"]
-    records = []
-    time_series_records = []
-    genotype_records = []
+    from .batch_runner_v6 import run_batch
+    field_class, combination, simulation, fixed = args_tuple
+    jobs = [(combination, run_id) for run_id in range(simulation['num_runs'])]
+    return run_batch(field_class, jobs, {"device": "cpu", **simulation}, fixed)
 
-    for run_id in range(num_runs):
-        # 変更(v6/v7): 初期化・記録・CUDA完了待ちを含めて実行時間を測る。
-        run_started_at = time.perf_counter()
-        rec = run_single_simulation(
-            field_class=field_class,
-            param_combination=param_combination,
-            sim_config=sim_config,
-            fixed_params=fixed_params,
-            run_id=run_id,
-            time_series_records=time_series_records if run_id == 0 else None,
-            genotype_records=genotype_records if run_id == 0 else None,
-        )
-        run_elapsed_seconds = time.perf_counter() - run_started_at
-        records.append(rec)
-
-        param_str = ", ".join([f"{k}={v}" for k, v in param_combination.items()])
-        print(
-            f"Completed: [{param_str}], run {run_id + 1}/{num_runs}, "
-            f"elapsed: {run_elapsed_seconds:.3f} s",
-            flush=True,
-        )
-
-    return records, time_series_records, genotype_records
 
 def _iter_condition_results(tasks, workers):
-    # 変更(v6/v7): 条件は逐次実行し、CUDAを複数プロセスから使用しない。
-    yield from map(run_condition, tasks)
+    from .batch_runner_v6 import run_with_retry
+    # Group incompatible spatial shapes, then batch conditions AND repetitions.
+    groups = {}
+    for field_class, combo, simulation, fixed in tasks:
+        size = {**fixed, **combo}.get("field_size", 10)
+        groups.setdefault(size, []).extend((combo, run_id) for run_id in range(simulation['num_runs']))
+    if not tasks:
+        return
+    field_class, _, simulation, fixed = tasks[0]
+    for jobs in groups.values():
+        batch_size = simulation.get('batch_size') or len(jobs)
+        for start in range(0, len(jobs), batch_size):
+            yield from run_with_retry(field_class, jobs[start:start+batch_size], simulation, fixed)
 
 
 def expand_grid_parameters(grid_params):
@@ -204,14 +139,20 @@ def run_experiment(config, data_dir=None, *, version=6):
 
     field_class = get_field_class(config["field_class"])
     agent_class = get_agent_class(config["agent_class"])
-    # 変更(v6/v7): CUDA確認と引数検証は、出力ディレクトリを作る前に実施する。
+    if version not in (6, 7):
+        raise ValueError("This runner supports v6 and v7 only.")
+    record_history = version == 6
+    batch_size = sim_config.get("batch_size")
+    if batch_size is not None and (type(batch_size) is not int or batch_size <= 0):
+        raise ValueError("batch_size must be a positive integer or null.")
+    # Validate dependencies, device and arguments before creating output files.
     if field_class.__name__ != f"FieldV{version}" or agent_class.__name__ != f"AgentV{version}":
         raise ValueError(f"runner v{version} requires FieldV{version} and AgentV{version}.")
     if workers != 1:
-        raise ValueError("v6/v7 runs conditions sequentially; workers must be 1.")
+        raise ValueError("v6/v7 uses one GPU process; workers must be 1.")
     from src.fields.field_v6 import FieldV6, require_device
-    sim_config.setdefault("device", "cuda:0" if version == 7 else "cpu")
-    require_device(sim_config["device"], cuda=version == 7)
+    sim_config.setdefault("device", "cuda:0")
+    require_device(sim_config["device"])
     if agent_class.__name__.removeprefix("Agent") != field_class.__name__.removeprefix("Field"):
         raise ValueError("agent_class and field_class must use the same version.")
     combinations = expand_grid_parameters(grid_params)
@@ -239,7 +180,7 @@ def run_experiment(config, data_dir=None, *, version=6):
     print(f"--- Experiment: {exp_name} ---")
     print(f"Target Field Class: {config['field_class']}")
     print(
-        f"Starting {len(combinations)} conditions x {num_runs} runs with {workers} workers..."
+        f"Starting {len(combinations)} conditions x {num_runs} runs in batches on {sim_config['device']}..."
     )
 
     tasks = [
@@ -247,23 +188,29 @@ def run_experiment(config, data_dir=None, *, version=6):
     ]
 
     all_raw_records = []
-    with time_series_path.open("w", newline="", encoding="utf-8") as series_file, \
-            genotype_path.open("w", newline="", encoding="utf-8") as genotype_file:
-        series_writer = csv.DictWriter(
-            series_file,
-            fieldnames=[*grid_keys, "run_id", "seed", "step", "population", "altruism_count", "altruism_rate"],
-        )
-        genotype_writer = csv.DictWriter(
-            genotype_file,
-            fieldnames=[*grid_keys, "run_id", "seed", "step", "genotype", "population"],
-        )
-        series_writer.writeheader()
-        genotype_writer.writeheader()
+    with ExitStack() as stack:
+        if record_history:
+            series_file = stack.enter_context(time_series_path.open("w", newline="", encoding="utf-8"))
+            genotype_file = stack.enter_context(genotype_path.open("w", newline="", encoding="utf-8"))
+            series_writer = csv.DictWriter(
+                series_file,
+                fieldnames=[*grid_keys, "run_id", "seed", "step", "population", "altruism_count", "altruism_rate"],
+            )
+            genotype_writer = csv.DictWriter(
+                genotype_file,
+                fieldnames=[*grid_keys, "run_id", "seed", "step", "genotype", "population"],
+            )
+            series_writer.writeheader()
+            genotype_writer.writeheader()
         for records, time_series_records, genotype_records in _iter_condition_results(tasks, workers):
             all_raw_records.extend(records)
-            series_writer.writerows(time_series_records)
-            genotype_writer.writerows(genotype_records)
+            if record_history:
+                series_writer.writerows(time_series_records)
+                genotype_writer.writerows(genotype_records)
 
+    condition_order = {tuple(combo[key] for key in grid_keys): i for i, combo in enumerate(combinations)}
+    all_raw_records.sort(key=lambda record: (
+        condition_order[tuple(record[key] for key in grid_keys)], record['run_id']))
     raw_df = pd.DataFrame(all_raw_records)
     summary_df = summarize_runs(raw_df, grid_keys)
     raw_df.to_csv(raw_path, index=False)
@@ -274,19 +221,20 @@ def run_experiment(config, data_dir=None, *, version=6):
     print(f"Total elapsed time: {experiment_elapsed_seconds:.3f} s")
     print(f"Raw data saved to: {raw_path}")
     print(f"Summary data saved to: {summary_path}")
-    print(f"Time series data saved to: {time_series_path}")
-    print(f"Genotype time series data saved to: {genotype_path}")
+    if record_history:
+        print(f"Time series data saved to: {time_series_path}")
+        print(f"Genotype time series data saved to: {genotype_path}")
 
     return raw_df, summary_df
 
 
-def main(argv=None):
+def main(argv=None, *, version=6):
     parser = argparse.ArgumentParser(description="Run a simulation experiment from JSON config.")
     parser.add_argument("--config", required=True, help="Path to an experiment JSON file")
     args = parser.parse_args(argv)
     with Path(args.config).open(encoding="utf-8") as file:
         config = json.load(file)
-    run_experiment(config)
+    run_experiment(config, version=version)
 
 
 if __name__ == "__main__":

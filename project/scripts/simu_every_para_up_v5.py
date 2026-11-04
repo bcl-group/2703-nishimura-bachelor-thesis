@@ -92,7 +92,7 @@ def run_single_simulation(
         if record_time_series or record_genotypes:
             interval_population_sum += len(field.agents)
             interval_altruism_count += field.altruism_count
-            if step == 1 or step % 1000 == 0:
+            if step == 1 or step % 3000 == 0:
                 record_sample(step, len(field.agents))
                 interval_population_sum = 0
                 interval_altruism_count = 0
@@ -110,7 +110,7 @@ def run_single_simulation(
 
         if not field.agents:
             if record_time_series or record_genotypes:
-                for sample_step in range((step // 1000 + 1) * 1000, total_steps + 1, 1000):
+                for sample_step in range((step // 3000 + 1) * 3000, total_steps + 1, 3000):
                     record_sample(sample_step, 0)
                     interval_altruism_count = 0
                     interval_population_sum = 0
@@ -254,7 +254,7 @@ def run_experiment(config, data_dir=None):
     field_class = get_field_class(config["field_class"])
     agent_class = get_agent_class(config["agent_class"])
     # This runner requires the death-age return contract also provided by V5.
-    if field_class.__name__ != "FieldV5" or agent_class.__name__ != "AgentV5":
+    if (field_class.__name__, agent_class.__name__) not in [(f"FieldV{v}", f"AgentV{v}") for v in (3, 5, 7)]:
         raise ValueError("simu_every_para_up_v5 requires FieldV5 and AgentV5.")
     if agent_class.__name__.removeprefix("Agent") != field_class.__name__.removeprefix("Field"):
         raise ValueError("agent_class and field_class must use the same version.")

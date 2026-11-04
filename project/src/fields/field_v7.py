@@ -1,79 +1,266 @@
-"""変更(v7): Pythonは状態保持と起動を担当し、計算本体はCUDA C++で実行する。"""
+import random
+from dataclasses import dataclass
+
+import numpy as np
+
 from src.agents.agent_v7 import AgentV7
-from src.cuda import load_v7_cuda
-from .field_v6 import FieldV6, require_device
 
 
-class FieldV7(FieldV6):
+@dataclass(frozen=True)
+class StepSnapshot:
+    """Read-only state and parameters used by every independent step calculation."""
+
+    positions: np.ndarray
+    energies: np.ndarray
+    weights: np.ndarray
+    food: np.ndarray
+    field_size: int
+    energy_loss: float
+    reward_food: float
+    death_threshold: float
+    levels: np.ndarray
+    starvation_threshold: float
+    transfer_amount: float
+
+
+@dataclass(frozen=True)
+class StepInput:
+    agent_index: int
+    neighbor_index: int | None
+    food_position: tuple[int, int] | None
+    random_direction: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class StepResult:
+    agent_index: int
+    position: tuple[int, int]
+    recipient_index: int | None
+    transfer: float
+    level: int = 0
+
+
+class FieldV7:
     agent_class = AgentV7
-    cuda = True
+    def __init__(
+        self,
+        field_size=10,
+        initial_agents=20,
+        mutation_rate=0.05,
+        initial_food_prob=0.1,
+        step_food_prob=0.003,
+        food_durability=3,
+        energy_loss_per_step=0.1,
+        reward_food=1.0,
+        clone_threshold=100.0,
+        death_threshold=-50.0,
+        life_left=5.0,
+        transfer_amount=1.0,
+    ):
 
-    def __init__(self, *args, device="cuda:0", **kwargs):
-        require_device(device, cuda=True)
-        # 変更(v7): 出力作成前のField初期化時にnvccによるビルドも検証する。
-        self._cuda = load_v7_cuda()
-        super().__init__(*args, device=device, **kwargs)
+        if type(food_durability) is not int or food_durability <= 0:
+            raise ValueError("food_durability must be a positive integer.")
+        self.field_size = field_size
+        self.mutation_rate = mutation_rate
+        self.step_food_prob = step_food_prob
+        self.food_durability = food_durability
+        self.energy_loss_per_step = energy_loss_per_step
+        self.reward_food = reward_food
+        self.clone_threshold = clone_threshold
+        self.death_threshold = death_threshold
+        self.starvation_threshold = death_threshold + life_left
+        self.transfer_amount = transfer_amount
+
+        # Positive values are remaining consumable food units; time alone does not reduce them.
+        self.grid_food = np.zeros((field_size, field_size), dtype=int)
+        self.agents = [
+            self.agent_class(
+                random.randint(0, field_size - 1),
+                random.randint(0, field_size - 1),
+                mutation_rate=mutation_rate,
+            )
+            for _ in range(initial_agents)
+        ]
+        self.spawn_objects(prob=initial_food_prob)
+        self.altruism_count = 0
+        self.acting_agent_count = 0
 
     def spawn_objects(self, prob=None):
-        import torch
-        probability = self.step_food_prob if prob is None else prob
-        # 変更(v7): 初期餌生成にも同じCUDAカーネルを使う。
-        consumed = torch.zeros_like(self.grid_food)
-        self._cuda.spawn(self.grid_food, consumed, self._random(self.grid_food.shape),
-                         probability, self.food_durability)
+        """Spawn food or reset existing food to its initial durability."""
+        if prob is None:
+            prob = self.step_food_prob
+        spawn_mask = np.random.rand(self.field_size, self.field_size) < prob
+        self.grid_food[spawn_mask] = self.food_durability
 
-    def prepare_step_inputs(self):
-        import torch
-        directions = torch.randint(-1, 2, (self.population, 2),
-                                   generator=self.generator, device=self.device)
-        return self._cuda.prepare(self.positions, self.grid_food, self.neighbor_cells,
-                                  self._random((self.population, 2)), directions)
+    @staticmethod
+    def _neighbor_cells(position, field_size):
+        x, y = map(int, position)
+        # Preserve traversal order while avoiding repeated cells on size 1/2 tori.
+        xs = dict.fromkeys((x + dx) % field_size for dx in (-1, 0, 1))
+        ys = dict.fromkeys((y + dy) % field_size for dy in (-1, 0, 1))
+        return [(nx, ny) for nx in xs for ny in ys]
 
-    def compute_agent_step(self, neighbors, food_cells, directions):
-        return self._cuda.compute(self.positions, self.energies, self.weights,
-                                  neighbors, food_cells, directions, self.field_size,
-                                  self.starvation_threshold, self.energy_loss_per_step,
-                                  self.death_threshold, self.transfer_amount)
+    @staticmethod
+    def _neighbor_indices(grid, cells, exclude_index=None):
+        # Read only the local cells and exclude self without list.remove().
+        return [
+            index for x, y in cells for index in grid[x][y]
+            if index != exclude_index
+        ]
 
-    def resolve_food(self, positions):
-        import torch
-        # 変更(v7): 一様順列はPyTorchのGPU乱数器で生成し、競合処理は.cuで行う。
-        priorities = torch.randperm(self.population, generator=self.generator, device=self.device)
-        return self._cuda.food(positions, self.grid_food, priorities, self.reward_food)
+    def get_nearest_agent(self, agent):
+        # Preserve the existing helper's random selection within the 3x3 neighborhood.
+        neighbors = [
+            other for other in self.agents
+            if other is not agent
+            and min(abs(other.x - agent.x), self.field_size - abs(other.x - agent.x)) <= 1
+            and min(abs(other.y - agent.y), self.field_size - abs(other.y - agent.y)) <= 1
+        ]
+        return random.choice(neighbors) if neighbors else None
 
-    def step(self, inputs=None):
-        # 変更(v7): 近傍探索→行動→餌→移譲集計→死亡・繁殖→餌生成をCUDAで実行する。
-        # カーネルはPyTorchの現在のストリームを使い、更新前の状態を共通参照する。
-        self.acting_agent_count = self.population
-        if inputs is not None:
-            self._validate_inputs(inputs)
-        neighbors, foods, directions = self.prepare_step_inputs() if inputs is None else inputs
-        positions, transfers = self.compute_agent_step(neighbors, foods, directions)
-        rewards, consumed = self.resolve_food(positions)
-        outputs = self._cuda.finish(
-            positions, self.energies, self.ages, self.weights, neighbors, transfers, rewards,
-            self._random((self.population, 8)), self.energy_loss_per_step,
-            self.death_threshold, self.clone_threshold, self.mutation_rate)
-        (self.positions, self.energies, self.ages, self.weights,
-         death_ages, self.altruism_count) = outputs
-        self.positive_altruism_count = self.altruism_count
-        self._cuda.spawn(self.grid_food, consumed, self._random(self.grid_food.shape),
-                         self.step_food_prob, self.food_durability)
+    def get_nearest_food(self, agent):
+        # Food is already spatially indexed; no full-field search is necessary.
+        neighbors = [
+            cell for cell in self._neighbor_cells((agent.x, agent.y), self.field_size)
+            if self.grid_food[cell] > 0
+        ]
+        return np.array(random.choice(neighbors), dtype=int) if neighbors else None
+
+    @staticmethod
+    def _torus_direction(src_x, src_y, target_x, target_y, field_size):
+        diff_x = (target_x - src_x + field_size // 2) % field_size - field_size // 2
+        diff_y = (target_y - src_y + field_size // 2) % field_size - field_size // 2
+        return int(np.sign(diff_x)), int(np.sign(diff_y))
+
+    def get_torus_direction(self, src_x, src_y, target_x, target_y):
+        return self._torus_direction(src_x, src_y, target_x, target_y, self.field_size)
+
+    def snapshot(self):
+        """Copy the beginning-of-step environment; no live agent references escape."""
+        positions = np.array([(a.x, a.y) for a in self.agents], dtype=int).reshape(-1, 2)
+        energies = np.array([a.energy for a in self.agents], dtype=float)
+        weights = np.array([a.weights for a in self.agents], dtype=int).reshape(-1, *self.agent_class.weight_shape)
+        levels = np.array([getattr(a, "altruism_level", 0) for a in self.agents], dtype=int)
+        levels.setflags(write=False)
+        food = self.grid_food.copy()
+        for array in (positions, energies, weights, food):
+            array.setflags(write=False)
+        return StepSnapshot(
+            positions, energies, weights, food, self.field_size,
+            self.energy_loss_per_step, self.reward_food, self.death_threshold,
+            levels, self.starvation_threshold, self.transfer_amount,
+        )
+
+    @staticmethod
+    def prepare_step_inputs(state):
+        """Resolve observation and movement random choices before individual calculations."""
+        # Build one field_size x field_size map from the immutable step snapshot.
+        grid = [[[] for _ in range(state.field_size)] for _ in range(state.field_size)]
+        for index, (x, y) in enumerate(state.positions):
+            grid[x][y].append(index)
+        inputs = []
+        for index, position in enumerate(state.positions):
+            cells = FieldV7._neighbor_cells(position, state.field_size)
+            neighbors = FieldV7._neighbor_indices(grid, cells, exclude_index=index)
+            foods = [cell for cell in cells if state.food[cell] > 0]
+            neighbor = random.choice(neighbors) if neighbors else None
+            food = random.choice(foods) if foods else None
+            direction = (random.choice([-1, 0, 1]), random.choice([-1, 0, 1]))
+            inputs.append(StepInput(index, neighbor, food, direction))
+        return inputs
+
+    @classmethod
+    def compute_agent_step(cls, state, step_input):
+        """Pure calculation: reads a snapshot and returns one agent's effects."""
+        index = step_input.agent_index
+        neighbor = step_input.neighbor_index
+        food = step_input.food_position
+        observations = [int(food is not None), int(neighbor is not None)]
+        output = np.dot(state.weights[index], observations) % 2
+        action = tuple(output[:2])
+        level = 0
+        transfer = 0.0
+        recipient = None
+        if action == (0, 1) and neighbor is not None:
+            available = max(0.0, state.energies[index] - state.energy_loss - state.death_threshold)
+            transfer = max(0.0, min(state.transfer_amount, available))
+            recipient = neighbor
+
+        target = None
+        if action in ((0, 0), (1, 0)) and food is not None:
+            target = food
+        elif action in ((0, 1), (1, 1)) and neighbor is not None:
+            target = state.positions[neighbor]
+        x, y = map(int, state.positions[index])
+        if target is None:
+            dx, dy = step_input.random_direction
+        else:
+            dx, dy = FieldV7._torus_direction(x, y, *target, state.field_size)
+            if action in ((1, 0), (1, 1)):
+                dx, dy = -dx, -dy
+        position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
+        return StepResult(index, position, recipient, transfer, level)
+
+    @staticmethod
+    def resolve_food(state, results):
+        candidates = {}
+        for result in results:
+            if state.food[result.position] > 0:
+                candidates.setdefault(result.position, []).append(result.agent_index)
+        rewards = np.zeros(len(state.positions), dtype=float)
+        consumed = np.zeros_like(state.food)
+        for position in sorted(candidates):
+            indices = sorted(candidates[position])
+            count = min(len(indices), int(state.food[position]))
+            winners = random.sample(indices, count) if count < len(indices) else indices
+            rewards[winners] = state.reward_food
+            consumed[position] = count
+        return rewards, consumed
+
+    def step(self) -> list[int]:
+        """Advance the field and return the ages of agents that died this step."""
+        state = self.snapshot()
+        inputs = self.prepare_step_inputs(state)
+        results = sorted(
+            (self.compute_agent_step(state, item) for item in inputs),
+            key=lambda result: result.agent_index,
+        )
+        food_rewards, consumed = self.resolve_food(state, results)
+
+        # Accumulate all transfers before committing any live agent state.
+        incoming = np.zeros(len(self.agents), dtype=float)
+        for result in results:
+            if result.recipient_index is not None:
+                incoming[result.recipient_index] += result.transfer
+        self.acting_agent_count = len(results)
+        self.altruism_count = sum(result.transfer > 0 for result in results)
+        for result in results:
+            index = result.agent_index
+            agent = self.agents[index]
+            agent.x, agent.y = result.position
+            if hasattr(agent, "altruism_level"):
+                agent.altruism_level = result.level
+            agent.age += 1
+            agent.energy = (
+                state.energies[index] - state.energy_loss - result.transfer
+                + incoming[index] + food_rewards[index]
+            )
+
+        next_agents = []
+        death_ages = []
+        for agent in self.agents:
+            if agent.energy <= self.death_threshold:
+                # Record the incremented age only after all energy effects settle.
+                death_ages.append(int(agent.age))
+                continue
+            if agent.energy >= self.clone_threshold:
+                agent.energy = 0
+                child = self.agent_class(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
+                next_agents.extend([agent, child])
+            else:
+                next_agents.append(agent)
+        self.agents = next_agents
+
+        self.grid_food[:] = state.food - consumed
+        self.spawn_objects()
         return death_ages
-
-    def _validate_inputs(self, inputs):
-        import torch
-        # 外部から固定観測を注入するテスト時だけ範囲を検証。通常ステップには転送を追加しない。
-        if len(inputs) != 3:
-            raise ValueError("inputs must contain neighbors, food cells and directions")
-        shapes = [(self.population,), (self.population,), (self.population, 2)]
-        for tensor, shape in zip(inputs, shapes):
-            if (not isinstance(tensor, torch.Tensor) or tuple(tensor.shape) != shape
-                    or tensor.dtype != torch.int64 or tensor.device != self.positions.device
-                    or not tensor.is_contiguous()):
-                raise ValueError("Invalid CUDA step input shape, dtype or device")
-        neighbors, food, directions = inputs
-        if (torch.any((neighbors < -1) | (neighbors >= self.population)).item()
-                or torch.any((food < -1) | (food >= self.field_size ** 2)).item()
-                or torch.any((directions < -1) | (directions > 1)).item()):
-            raise ValueError("CUDA step input index or direction is out of range")

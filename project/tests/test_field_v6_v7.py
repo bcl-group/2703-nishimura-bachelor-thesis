@@ -9,10 +9,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
-from src import AgentV6, AgentV7, FieldV5, FieldV6, FieldV7
+from src import AgentV6, FieldV5, FieldV6
+
+HAS_V7 = importlib.util.find_spec("src.fields.field_v7") is not None
+if HAS_V7:
+    from src import AgentV7, FieldV7
 from src.factory import get_agent_class, get_field_class
 from scripts import simu_every_para_up_v6 as runner
-from scripts import simu_every_para_up_v7 as cuda_runner
+if HAS_V7:
+    from scripts import simu_every_para_up_v7 as cuda_runner
 
 HAS_TORCH = importlib.util.find_spec('torch') is not None
 if HAS_TORCH:
@@ -22,9 +27,11 @@ if HAS_TORCH:
 class RegistrationTests(unittest.TestCase):
     def test_registration_without_eager_torch_dependency(self):
         self.assertIs(get_agent_class('AgentV6'), AgentV6)
-        self.assertIs(get_agent_class('AgentV7'), AgentV7)
+        if HAS_V7:
+            self.assertIs(get_agent_class('AgentV7'), AgentV7)
         self.assertIs(get_field_class('FieldV6'), FieldV6)
-        self.assertIs(get_field_class('FieldV7'), FieldV7)
+        if HAS_V7:
+            self.assertIs(get_field_class('FieldV7'), FieldV7)
 
     def test_missing_dependency_before_output(self):
         if HAS_TORCH:
@@ -168,7 +175,7 @@ class TensorFieldTests(unittest.TestCase):
     def test_runner_csv_and_extinction(self):
         import pandas as pd
         config = json.loads(Path('configs/exp_v6.json').read_text())
-        config['simulation'].update(total_steps=2000, eval_start_step=5)
+        config['simulation'].update(total_steps=2000, eval_start_step=5, device='cpu')
         config['grid_parameters'] = {}
         config['fixed_field_parameters'].update(initial_agents=2, death_threshold=0,
                                                  initial_food_prob=0, step_food_prob=0)
@@ -189,6 +196,7 @@ class TensorFieldTests(unittest.TestCase):
             raw, _ = runner.run_experiment(config, directory)
             self.assertEqual(raw.iloc[0]['avg_death_age'], 1)
 
+    @unittest.skipUnless(HAS_V7, 'v7 is unavailable')
     def test_cuda_unavailable_before_output(self):
         if torch.cuda.is_available():
             self.skipTest('CUDA is available')
@@ -198,7 +206,8 @@ class TensorFieldTests(unittest.TestCase):
                 cuda_runner.run_experiment(config, directory)
             self.assertEqual(list(Path(directory).iterdir()), [])
 
-    def test_cuda_native_agent_api(self):
+    @unittest.skipUnless(HAS_V7, 'v7 is unavailable')
+    def test_cuda_agent_api(self):
         if not torch.cuda.is_available():
             self.skipTest('CUDA is unavailable')
         weights = torch.randint(2, (20, 2, 4), dtype=torch.int64)
@@ -211,11 +220,12 @@ class TensorFieldTests(unittest.TestCase):
             actual = AgentV7.mutate(weights.cuda(), rate, generator)
             torch.testing.assert_close(actual.cpu(), weights if rate == 0 else 1-weights)
 
-    def test_cuda_native_seeded_balance_and_empty(self):
+    @unittest.skipUnless(HAS_V7, 'v7 is unavailable')
+    def test_cuda_seeded_balance_and_empty(self):
         if not torch.cuda.is_available():
             self.skipTest('CUDA is unavailable')
         def run():
-            field = FieldV7(field_size=3, initial_agents=20, initial_food_prob=.5,
+            field = FieldV7(device='cuda:0', field_size=3, initial_agents=20, initial_food_prob=.5,
                             step_food_prob=0, death_threshold=-1e6, clone_threshold=1e6,
                             transfer_amount=3, seed=99)
             with runner.deterministic_execution():
@@ -230,10 +240,10 @@ class TensorFieldTests(unittest.TestCase):
         a, b = run(), run()
         for name in ('positions', 'energies', 'ages', 'weights', 'grid_food'):
             torch.testing.assert_close(getattr(a, name), getattr(b, name), rtol=0, atol=0)
-        empty = FieldV7(initial_agents=0, initial_food_prob=0, step_food_prob=1)
+        empty = FieldV7(device='cuda:0', initial_agents=0, initial_food_prob=0, step_food_prob=1)
         self.assertEqual(empty.step().numel(), 0)
         self.assertTrue(torch.all(empty.grid_food == empty.food_durability).item())
-        clone = FieldV7(field_size=1, initial_agents=2, initial_food_prob=0,
+        clone = FieldV7(device='cuda:0', field_size=1, initial_agents=2, initial_food_prob=0,
                         step_food_prob=0, energy_loss_per_step=0, clone_threshold=1,
                         mutation_rate=1)
         clone.weights.zero_()
@@ -246,13 +256,14 @@ class TensorFieldTests(unittest.TestCase):
                         torch.full((4,), -1, device='cuda:0'),
                         torch.zeros((4, 2), dtype=torch.int64, device='cuda:0')))
 
+    @unittest.skipUnless(HAS_V7, 'v7 is unavailable')
     def test_cpu_cuda_fixed_step(self):
         if not torch.cuda.is_available():
             self.skipTest('CUDA is unavailable')
         cpu = FieldV6(field_size=3, initial_agents=20, initial_food_prob=0,
                       step_food_prob=0, death_threshold=-1e6, clone_threshold=1e6)
         cpu.grid_food.fill_(20)
-        gpu = FieldV7(field_size=3, initial_agents=20, initial_food_prob=0,
+        gpu = FieldV7(device='cuda:0', field_size=3, initial_agents=20, initial_food_prob=0,
                       step_food_prob=0, death_threshold=-1e6, clone_threshold=1e6)
         for name in ('positions', 'energies', 'ages', 'weights', 'grid_food'):
             setattr(gpu, name, getattr(cpu, name).to('cuda:0'))

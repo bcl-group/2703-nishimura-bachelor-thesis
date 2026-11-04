@@ -1,12 +1,10 @@
 import argparse
 import concurrent.futures
-import csv
 import itertools
 import inspect
 import json
 import random
 import time
-from collections import Counter, deque
 from pathlib import Path
 from decimal import Decimal
 
@@ -35,8 +33,6 @@ def run_single_simulation(
     sim_config,
     fixed_params,
     run_id=0,
-    time_series_records=None,
-    genotype_records=None,
 ):
     total_steps = sim_config["total_steps"]
     eval_start_step = sim_config["eval_start_step"]
@@ -54,48 +50,13 @@ def run_single_simulation(
     population_squared_sum = 0
     altruism_sum = 0
     altruism_squared_sum = 0
-    record_time_series = run_id == 0 and time_series_records is not None
-    record_genotypes = run_id == 0 and genotype_records is not None
-    interval_population_sum = 0
-    interval_altruism_count = 0
     death_count = 0
     death_age_sum = 0
     death_age_squared_sum = 0
 
-    def record_sample(sample_step, population):
-        identifiers = {
-            **param_combination,
-            "run_id": run_id,
-            "seed": seed,
-            "step": sample_step,
-        }
-        if record_time_series:
-            time_series_records.append({
-                **identifiers,
-                "population": population,
-                "altruism_count": interval_altruism_count,
-                "altruism_rate": interval_altruism_count / interval_population_sum if interval_population_sum > 0 else None,
-            })
-        if record_genotypes and population:
-            counts = Counter(
-                "".join(str(int(bit)) for bit in agent.weights.flat)
-                for agent in field.agents
-            )
-            genotype_records.extend(
-                {**identifiers, "genotype": genotype, "population": count}
-                for genotype, count in sorted(counts.items())
-            )
-
     for step in range(1, total_steps + 1):
         # FieldV4 records deaths during removal, avoiding population ID scans.
         death_ages = field.step()
-        if record_time_series or record_genotypes:
-            interval_population_sum += len(field.agents)
-            interval_altruism_count += field.altruism_count
-            if step == 1 or step % 1000 == 0:
-                record_sample(step, len(field.agents))
-                interval_population_sum = 0
-                interval_altruism_count = 0
         if step >= eval_start_step:
             # Warmup deaths are returned too, but only the evaluation window counts.
             for age in death_ages:
@@ -109,11 +70,6 @@ def run_single_simulation(
             altruism_squared_sum += field.altruism_count**2
 
         if not field.agents:
-            if record_time_series or record_genotypes:
-                for sample_step in range((step // 1000 + 1) * 1000, total_steps + 1, 1000):
-                    record_sample(sample_step, 0)
-                    interval_altruism_count = 0
-                    interval_population_sum = 0
             break
 
     evaluation_steps = total_steps - eval_start_step + 1
@@ -168,11 +124,9 @@ def run_condition(args_tuple):
     field_class, param_combination, sim_config, fixed_params = args_tuple
     num_runs = sim_config["num_runs"]
     records = []
-    time_series_records = []
-    genotype_records = []
 
     for run_id in range(num_runs):
-        # Measure wall-clock duration, including initialization and sample collection.
+        # Measure wall-clock duration, including initialization.
         run_started_at = time.perf_counter()
         rec = run_single_simulation(
             field_class=field_class,
@@ -180,8 +134,6 @@ def run_condition(args_tuple):
             sim_config=sim_config,
             fixed_params=fixed_params,
             run_id=run_id,
-            time_series_records=time_series_records if run_id == 0 else None,
-            genotype_records=genotype_records if run_id == 0 else None,
         )
         run_elapsed_seconds = time.perf_counter() - run_started_at
         records.append(rec)
@@ -193,7 +145,7 @@ def run_condition(args_tuple):
             flush=True,
         )
 
-    return records, time_series_records, genotype_records
+    return records
 
 def _iter_condition_results(tasks, workers):
     if workers == 1:
@@ -270,8 +222,6 @@ def run_experiment(config, data_dir=None):
 
     raw_path = exp_data_dir / "raw_data.csv"
     summary_path = exp_data_dir / "summary_data.csv"
-    time_series_path = exp_data_dir / "time_series_data.csv"
-    genotype_path = exp_data_dir / "genotype_time_series_data.csv"
 
     grid_keys = list(grid_params.keys())
 
@@ -286,22 +236,8 @@ def run_experiment(config, data_dir=None):
     ]
 
     all_raw_records = []
-    with time_series_path.open("w", newline="", encoding="utf-8") as series_file, \
-            genotype_path.open("w", newline="", encoding="utf-8") as genotype_file:
-        series_writer = csv.DictWriter(
-            series_file,
-            fieldnames=[*grid_keys, "run_id", "seed", "step", "population", "altruism_count", "altruism_rate"],
-        )
-        genotype_writer = csv.DictWriter(
-            genotype_file,
-            fieldnames=[*grid_keys, "run_id", "seed", "step", "genotype", "population"],
-        )
-        series_writer.writeheader()
-        genotype_writer.writeheader()
-        for records, time_series_records, genotype_records in _iter_condition_results(tasks, workers):
-            all_raw_records.extend(records)
-            series_writer.writerows(time_series_records)
-            genotype_writer.writerows(genotype_records)
+    for records in _iter_condition_results(tasks, workers):
+        all_raw_records.extend(records)
 
     raw_df = pd.DataFrame(all_raw_records)
     summary_df = summarize_runs(raw_df, grid_keys)
@@ -313,8 +249,6 @@ def run_experiment(config, data_dir=None):
     print(f"Total elapsed time: {experiment_elapsed_seconds:.3f} s")
     print(f"Raw data saved to: {raw_path}")
     print(f"Summary data saved to: {summary_path}")
-    print(f"Time series data saved to: {time_series_path}")
-    print(f"Genotype time series data saved to: {genotype_path}")
 
     return raw_df, summary_df
 

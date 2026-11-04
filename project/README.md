@@ -105,80 +105,151 @@ field_class = get_field_class("FieldV2")
 python -m unittest discover -s tests -v
 ```
 
-## v6（CPUテンソル）・v7（CUDA）
+## v6：条件×試行のGPUバッチ並列化
 
-変更(v6/v7): v6はPyTorchのCPUテンソル版、v7はCUDA C++（`.cu`）版です。
-v7はPyTorchをテンソルの保持・乱数生成・ソート・累積和・統計とPython連携に使用し、
-近傍探索・行動・移動・餌の競合・移譲集計・死亡・繁殖・餌生成をCUDAカーネルで実行します。
-v5以前の利用にはPyTorchは不要です。
-新しい版では個体リスト`field.agents`の代わりに、`positions`（N×2）、
-`energies`（N、float64）、`ages`（N）、`weights`（N×2×4）のテンソルを保持します。
-個体数は`field.population`、遺伝子の集計は`field.genotype_counts()`で取得します。
-`step()`の戻り値は死亡年齢のテンソルです。
-`AgentV6` / `AgentV7`は個体オブジェクトではなく、行動・突然変異の一括計算を担当します。
-
-利用先の仮想環境にPyTorchを別途導入してください。CPU版は`python -m pip install torch`、
-CUDA版は[公式インストール案内](https://pytorch.org/get-started/locally/)でOSとドライバーに
-対応するCUDA版を選びます。RTX 3060（12 GB）1台を想定しています。
+v6はPyTorchを使用し、全パラメータ条件×全試行をバッチにまとめて実行します。
+`simulation.device`で`cuda:0`などのGPU、または`cpu`を指定できます。
+設定例`configs/exp_v6.json`はCUDAを使用します。v5以前の実行にPyTorchは不要です。
 
 ```bash
+python -m pip install torch
 python -m scripts.simu_every_para_up_v6 --config configs/exp_v6.json
-python -m scripts.simu_every_para_up_v7 --config configs/exp_v7.json
-python -m unittest discover -s tests -p 'test_field_v6_v7.py' -v
 ```
 
-設定の変更点は、版番号・実験名・`simulation.workers: 1`と
-`simulation.device`（v6: `cpu`、v7: `cuda:0`）です。
-JSONはコメント非対応なので、設定の変更理由はここに記載しています。
-`device`と乱数シードは`simulation`で指定し、フィールド引数には指定しません。
-条件・試行は逐次実行し、各ステップ内の個体処理を並列化します。
-CUDAが利用できない場合は出力ファイルの作成前にエラーになります。
+GPUではドライバーに対応するCUDA版PyTorchを
+[公式インストール案内](https://pytorch.org/get-started/locally/)に従って導入してください。
+CUDA C++拡張を使用しないため、nvccやNinjaは不要です。
+CUDAが利用できなければ出力ディレクトリの作成前にエラーになります。
+CPUで実行する場合は設定の`simulation.device`を`cpu`に変更してください。
 
-餌の耐久度、同期更新、移譲、死亡・繁殖、CSVの列と記録間隔はv5と共通です。
-乱数生成器が異なるため、v5・v6・v7の同じシードの軌跡は一致しません。
-runnerは決定的演算を有効にし、同一版・同一ソフトウェア／機器構成での再現性を
-検証対象とします。エネルギーと統計は倍精度です。
-GPUへの入力・状態はデバイス上に保持しますが、可変個体数の圧縮・繁殖時には
-CPU/GPU同期が発生します（v7では出力個体数・死亡数を取得する際）。
-初期20個体などの小規模条件では起動・同期の費用が上回るため、高速化は保証しません。
-時間表示には初期化・記録・GPU計算完了待ちが含まれます。
+### 3段階の更新
 
-GPU未搭載またはPyTorch未導入の環境では、該当テストはスキップされます。
-実機での比較時は、各版の設定で条件・ステップ数を揃え、ウォームアップ後に複数回測定してください。
+`src/fields/batch_v6.py`が、次の3段階をバッチ全体に適用します。
+これは論理的な段階分けであり、実際のCUDAカーネル起動数は3回に限定しません。
+近傍索引・ソート・集計・個体配列の整理には補助GPU演算を使います。
+
+1. **行動決定 `[Params, Agents]`**：更新前の状態から観測・行動を決定し、移動先・利他ターゲット・移譲量・要求エサマスを出力します。要求先は移動後のマスです。
+2. **空間マス更新 `[Params, Field_X, Field_Y]`**：要求をマス単位で集約し、耐久度を上限に公平な非復元抽選で勝者を選びます。マス別の消費量と個体別の当選フラグを出力します。
+3. **個体更新 `[Params, Agents]`**：利他受給を集計し、代謝・移譲・採食報酬を反映して移動・加齢・死亡・分裂を処理します。生存親の直後に子を置き、子だけに突然変異を適用します。
+
+餌は消費後に設定確率で耐久度を所定値まで補充します。
+観測・移譲可能量はステップ開始時の状態に基づき、受領分の同一ステップ内の再移譲はありません。
+死亡判定は利他受給・採食後です。これらは従来v6の規則を維持します。
+
+### バッチ・メモリ・再現性
+
+Paramsはパラメータ組合せとrun_idの組です。異なるフィールドサイズは別バッチにします。
+内部状態は`[Params, Capacity, ...]`で保持し、有効個体マスクで空き領域を除外します。
+個体数は条件ごとに増減し、出生時に容量を自動拡張します。上限で個体を切り捨てる処理はありません。
+
+`simulation.batch_size`には同時に実行する試行数の正整数、または`null`を指定します。
+`null`または省略時は同じフィールドサイズの全試行をまとめます。
+CUDAメモリ不足時はバッチを半分に分け、初期seedから再実行します。
+失敗した計算の記録は出力せず、1試行でも収まらない場合はエラーにします。
+`workers`は`1`とし、1プロセスからGPUを使います。
+
+試行ごとに独立した乱数生成器を持ち、seedは`base_seed + run_id`です。
+実個体数・出生数に応じて乱数を生成するため、パディング容量・バッチ分割・条件の並べ替え・
+他試行の絶滅によって乱数系列は変化しません。
+乱数生成と初期化・記録には条件別のPythonループがありますが、状態更新はバッチ演算です。
+利他受給は送信者順を固定して区間ごとに加算し、浮動小数点atomic加算を避けます。
+同一デバイス・ソフトウェア構成での再現性を検証対象とし、旧v6やCPU/GPU間の乱数軌跡の一致は求めません。
+エネルギー・統計はfloat64です。
+
+可変個体数と乱数形状の取得には毎ステップCPU/GPU同期が発生します。
+小規模な条件では起動・同期・ソートの費用が大きく、高速化は条件数や個体数に依存します。
+時間表示には初期化・記録・GPU計算完了待ちを含むバッチ時間と実験全体の時間を表示します。
+
+### API・出力・検証
+
+`FieldV6`の単一条件APIもバッチ計算の1条件版を使用します。
+`positions`（N×2）、`energies`（N）、`ages`（N）、`weights`（N×2×4）、
+`grid_food`、`population`、`genotype_counts()`を維持し、`step()`は死亡年齢テンソルを返します。
+`AgentV6`は行動・突然変異の一括計算APIです。
+
+CSVの列・集計方法・記録間隔は従来v6と共通です。時系列・遺伝子頻度は各条件のrun_id=0を
+ステップ1と1000ステップごとに記録します。絶滅後も評価期間の残りをゼロとして集計します。
+異なる条件の時系列行はバッチ処理順に出力されるため、解析時は条件とstepで並べてください。
+
+```bash
+python -m unittest discover -s tests -p 'test_batch_v6.py' -v
+python -m unittest discover -s tests -p 'test_field_v6_v7.py' -v
+python -m unittest discover -s tests -v
+```
+
+PyTorch未導入時はテンソル計算テストを、GPUがない環境ではGPU比較をスキップします。
+CPUでは既存ルール、バッチ分割・並べ替えの一致、容量拡張、絶滅、CSV、メモリ不足時の再試行を検証します。
+GPUテストは固定入力でCPUと比較し、バッチ構成によらない再現性も確認します。
+今回の環境ではCPU版PyTorchで検証し、GPUドライバーを利用できないためGPU動作・性能は未検証です。
+実機性能の比較では、条件・ステップ数を揃え、ウォームアップ後に複数回測定してください。
 既定の10万ステップ実験は自動実行しません。
 
-### v7のCUDAソースとビルド
+## v7：時系列を保存せず、パラメータによる推移を比較する
 
-変更(v7): 計算本体は`src/cuda/simulation_v7.cu`です。
-`src/cuda/bindings_v7.cpp`がPythonへの接続を定義し、
-`src/fields/field_v7.py`からカーネルを起動します。
-`src/agents/agent_v7.py`の行動・突然変異APIも同じ`.cu`を使用します。
-v6はCPUテンソル版のままです。
+v7はv6と同じ3段階のバッチ計算・行動規則を使い、CPUとCUDAの両方に対応します。
+`FieldV7`と`AgentV7`はv6のクラスを継承し、実行・集計処理も共有しています。
+旧CUDA C++版v7の復元ではなく、現在のv6を基にした版です。
 
-v7の実行には、CUDA対応PyTorchに加えて以下が必要です。
-
-- NVIDIAドライバーとCUDA対応GPU
-- PyTorchのCUDAバージョンと互換性のあるCUDA Toolkit（`nvcc`を含む）
-- CUDA Toolkitが対応するC++コンパイラー（LinuxではGCC/G++）
-- Ninja（`python -m pip install ninja`）
-
-CUDA対応PyTorchだけのインストールでは`nvcc`は用意されません。
-`python -c "import torch; print(torch.version.cuda)"`と`nvcc --version`で確認します。
-Toolkitが自動検出されない場合は、そのインストール先を`CUDA_HOME`に設定してください。
-
-従来と同じv7の実行コマンドで、初回に`.cu`と`.cpp`を自動コンパイルします。
-生成物は`.cache/cuda_v7/`に保存し、次回以降は再利用します。
-必要なら`MAX_JOBS=1`でコンパイル時の並列数を制限できます。
-ビルド失敗時にテンソル版へ戻す処理はありません。
-高速近似演算は使用せず、CUDAコンパイル時も`--fmad=false`で計算順序を維持します。
-この`.cu`はPyTorch拡張としてビルドするソースで、単体の実行ファイルではありません。
+v7は個体数・利他行動・遺伝子型の時系列を記録しません。記録用リスト、区間集計、
+定期サンプリング、遺伝子頻度集計、記録用のCPU転送を省きます。
+評価期間の合計・二乗和・死亡数から統計を計算するため、記録用メモリがステップ数に比例して増えません。
+個体数の増加に伴う状態テンソルのメモリは引き続き必要です。
+同じ条件・seed・デバイス構成では、v6と同じ試行別・条件別の集計値になります。
 
 ```bash
-python -m unittest discover -s tests -p 'test_cuda_v7_source.py' -v
-python -m unittest discover -s tests -p 'test_field_v6_v7.py' -v
+python -m scripts.simu_every_para_up_v7 --config configs/exp_v7.json
+jupyter notebook notebooks/analysis_exp_v7.ipynb
 ```
 
-前者は`.cu`のカーネル本体を通常C++として実行する計算式のテストで、CUDA不要です。
-CUDAコンパイル・カーネル起動・デバイス連携は、後者のGPUテストで検証します。
-今回の開発環境にはPyTorch・`nvcc`・利用可能なGPUがないため、
-CUDA拡張のビルドとGPU上での動作・性能は未検証です。
+設定例は現在のv6と同じ240条件×10試行・20万ステップで、後半10万ステップを評価します。
+`batch_size: 1200`、`device: cuda:0`が既定です。CPUで実行する場合は`device`を`cpu`へ変更してください。
+バッチ分割・乱数系列・メモリ不足時の再試行・絶滅後の集計はv6と共通です。
+v7には時系列記録を再有効化する設定はありません。v6の出力と解析ノートブックは維持しています。
+
+実験結果は`data/exp_v7_grid_search/`に次の3ファイルを保存します。
+
+- `config_used.json`：実行時の設定
+- `raw_data.csv`：各条件・各試行の平均と標本標準偏差
+- `summary_data.csv`：条件別に集計した試行平均と試行間標準偏差
+
+`time_series_data.csv`と`genotype_time_series_data.csv`は作成しません。
+既存の実験データを残して比較する場合は、`experiment_name`を変更して別ディレクトリに保存してください。
+
+解析ノートブックは、この3ファイルだけを読み込みます。既定の横軸は`death_threshold`、
+線の分類は`transfer_amount`で、初期餌確率・餌補充確率・餌耐久度の組合せごとに図を分けます。
+各図は平均個体数・利他行動件数・利他行動率・平均死亡年齢の4パネルです。
+点付き折れ線に試行間標準偏差のエラーバーを表示します（信頼区間ではありません）。
+欠損した平均をゼロに置換せず、標準偏差のみが欠損の場合は平均の点と線を表示します。
+
+`x_parameter`・`series_parameter`で軸と線の分類、`comparison_filters`で条件の絞り込みを変更できます。
+全条件のままなら現在の設定では8枚の図になります。他の条件を暗黙に平均する処理はありません。
+可変パラメータが1つの場合は単一系列、固定条件だけの場合は点で表示します。
+同じ集計形式のv6データも、`experiment_name`を変更すれば読み込めます。
+
+```bash
+python -m unittest discover -s tests -p 'test_v7.py' -v
+python -m unittest discover -s tests -p 'test*6*.py' -v
+```
+
+v7はCPUでv6との状態・統計の一致、時系列記録の停止、バッチ分割、容量拡張、絶滅と再試行を検証しています。
+GPUテストはCUDAが利用できる環境で実施します。現在の環境ではGPU実行・性能は未検証です。
+
+## v4の行動と出力
+
+`python -m scripts.simu_every_para_up --config configs/exp_v4.json` で実行します。
+入力は順に、餌の有無、他個体の有無、自身の飢餓状態、他個体の飢餓状態です。
+2ビット出力は `00`: 餌に接近、`01`: 他個体に接近し利他行動、`10`: 餌から離れる、`11`: 他個体から離れる、に対応します。
+対象がない場合はランダムに移動します。
+
+出力は `config_used.json`、`raw_data.csv`、`summary_data.csv` のみです。個体数・利他行動および遺伝子型の時系列は収集しません。既存の時系列CSVは削除・更新しません。
+
+ v4の餌は `food_durability`（正の整数、既定値5）を採用します。時間では減らず、獲得個体1体につき1減ります。移動後に同じセルにいる個体数が残り耐久値を超える場合、重複なしの抽選で獲得個体を選び、各個体に `reward_food` を与えます。再出現時は耐久値を設定値に戻します。旧設定名 `food_lifetime_steps` は使用できません。
+
+## v3・v5・v7の共通CPUモデル
+
+3方式ともv5の同期更新・移動・移譲・採食抽選を使用します。
+v3は他者の利他レベルを入力して自身のレベルを更新（3×3）、v5は自身と他者の飢餓状態（2×4）、v7は餌と他者の有無のみ（2×2）を入力します。
+移譲は全方式で行動01の場合に実施します。v7は旧GPU版を置き換えています。
+実行は `python -m scripts.simu_every_para_up_v3 --config configs/exp_v3.json` とし、v5・v7も同じ形式です。
+時系列と遺伝子型は各条件のrun_id=0について1・3000・6000…stepで保存します。
+旧v7のGPU実行・時系列非保存の説明はこの仕様で置き換えます。

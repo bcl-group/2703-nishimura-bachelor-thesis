@@ -61,14 +61,35 @@ class FieldV4Tests(unittest.TestCase):
         self.assertEqual(decide.call_args_list[0].args[1:], (0, 1, 0, 1))
         self.assertEqual(decide.call_args_list[1].args[1:], (0, 1, 1, 0))
 
-    def test_shared_food_rewards_every_agent_without_consumption(self):
+    def test_shared_food_consumes_one_unit_per_agent(self):
         field = self.make_field(energy_loss_per_step=0, reward_food=2)
         field.agents = [self.make_agent(0, 0), self.make_agent(1, 0)]
         field.grid_food[0, 0] = 5
         field.step()
         self.assertEqual([a.energy for a in field.agents], [2, 2])
         self.assertEqual([(a.x, a.y) for a in field.agents], [(0, 0), (0, 0)])
-        self.assertEqual(field.grid_food[0, 0], 4)
+        self.assertEqual(field.grid_food[0, 0], 3)
+
+    def test_food_lottery_limits_rewards_and_can_select_either_agent(self):
+        winners = set()
+        for seed in range(20):
+            random.seed(seed)
+            field = self.make_field(field_size=1, energy_loss_per_step=0, reward_food=2)
+            field.agents = [self.make_agent(), self.make_agent()]
+            field.grid_food[0, 0] = 1
+            field.step()
+            energies = [a.energy for a in field.agents]
+            self.assertEqual(sorted(energies), [0, 2])
+            winners.add(energies.index(2))
+            self.assertEqual(field.grid_food[0, 0], 0)
+        self.assertEqual(winners, {0, 1})
+
+    def test_unvisited_food_does_not_decay(self):
+        field = self.make_field()
+        field.grid_food[0, 0] = 3
+        for _ in range(10):
+            field.step()
+        self.assertEqual(field.grid_food[0, 0], 3)
 
     def test_food_absence_and_new_spawn_do_not_reward(self):
         field = self.make_field(field_size=1, energy_loss_per_step=0.25)
@@ -82,7 +103,7 @@ class FieldV4Tests(unittest.TestCase):
         field.step()
         self.assertEqual(agent.energy, 10.5)
 
-    def test_food_is_available_for_exactly_five_steps(self):
+    def test_food_has_five_consumable_units(self):
         field = self.make_field(field_size=1, energy_loss_per_step=0)
         agent = self.make_agent()
         field.agents = [agent]
@@ -94,7 +115,7 @@ class FieldV4Tests(unittest.TestCase):
         field.step()
         self.assertEqual(agent.energy, 5)
 
-    def test_respawn_refreshes_lifetime(self):
+    def test_respawn_refreshes_durability(self):
         field = self.make_field(field_size=1)
         field.grid_food[0, 0] = 1
         field.step_food_prob = 1
@@ -104,13 +125,13 @@ class FieldV4Tests(unittest.TestCase):
         field.step()
         self.assertEqual(field.grid_food[0, 0], 5)
 
-    def test_lifetime_requires_positive_integer_and_old_argument_is_removed(self):
+    def test_durability_requires_positive_integer_and_old_argument_is_removed(self):
         for value in (0, -1, 1.5, 5.0, True, np.bool_(True), '5'):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                self.make_field(food_lifetime_steps=value)
-        self.assertEqual(self.make_field(food_lifetime_steps=2).food_lifetime_steps, 2)
+                self.make_field(food_durability=value)
+        self.assertEqual(self.make_field(food_durability=2).food_durability, 2)
         with self.assertRaises(TypeError):
-            self.make_field(food_durability=5)
+            self.make_field(food_lifetime_steps=5)
 
     def test_metabolic_death_can_be_rescued_in_either_list_order(self):
         for reverse in (False, True):
@@ -208,7 +229,7 @@ class FieldV4Tests(unittest.TestCase):
             np.random.seed(73)
             field = FieldV4(
                 field_size=4, initial_agents=12, initial_food_prob=0.3,
-                step_food_prob=0.2, food_lifetime_steps=3,
+                step_food_prob=0.2, food_durability=3,
                 energy_loss_per_step=0.2, reward_food=0.7, transfer_amount=2,
                 death_threshold=-1000000, clone_threshold=1000000,
             )
@@ -216,7 +237,10 @@ class FieldV4Tests(unittest.TestCase):
                 before_food = field.grid_food.copy()
                 before_energy = sum(a.energy for a in field.agents)
                 field.step()
-                fed = sum(before_food[a.x, a.y] > 0 for a in field.agents)
+                arrivals = np.zeros_like(before_food)
+                for a in field.agents:
+                    arrivals[a.x, a.y] += 1
+                fed = np.minimum(arrivals, before_food).sum()
                 self.assertAlmostEqual(
                     sum(a.energy for a in field.agents), before_energy - 12 * 0.2 + fed * 0.7,
                 )

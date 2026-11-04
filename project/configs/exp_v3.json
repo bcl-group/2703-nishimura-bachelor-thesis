@@ -5,27 +5,41 @@
   "simulation": {
     "total_steps": 200000,
     "eval_start_step": 100001,
-    "num_runs": 1,
-    "base_seed": 43,
-    "workers": 5
+    "num_runs": 10,
+    "base_seed": 42,
+    "workers": 15
   },
   "grid_parameters": {
+    "initial_food_prob": [
+      0.1
+    ],
+    "step_food_prob": [
+      0.003
+    ],
+    "food_durability": [
+      5
+    ],
     "death_threshold": [
-      -30
-  ],
-    "mutation_rate": [
-      0.05
+      -160,
+      -140,
+      -120,
+      -100,
+      -80,
+      -60,
+      -40,
+      -30,
+      -20,
+      -10,
+      -5
     ],
     "transfer_amount": [
-      5
+      1
     ]
   },
   "fixed_field_parameters": {
     "field_size": 10,
     "initial_agents": 20,
-    "initial_food_prob": 0.1,
-    "step_food_prob": 0.003,
-    "food_durability": 5.0,
+    "mutation_rate": 0.05,
     "energy_loss_per_step": 0.1,
     "reward_food": 1.0,
     "clone_threshold": 100.0

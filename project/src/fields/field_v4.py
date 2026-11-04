@@ -36,7 +36,6 @@ class StepResult:
     position: tuple[int, int]
     recipient_index: int | None
     transfer: float
-    food_reward: float
 
 
 class FieldV4:
@@ -47,7 +46,7 @@ class FieldV4:
         mutation_rate=0.05,
         initial_food_prob=0.1,
         step_food_prob=0.003,
-        food_lifetime_steps=5,
+        food_durability=5,
         energy_loss_per_step=0.1,
         reward_food=1.0,
         clone_threshold=100.0,
@@ -56,10 +55,12 @@ class FieldV4:
         transfer_amount=1.0,
     ):
 
+        if type(food_durability) is not int or food_durability <= 0:
+            raise ValueError("food_durability must be a positive integer.")
         self.field_size = field_size
         self.mutation_rate = mutation_rate
         self.step_food_prob = step_food_prob
-        self.food_lifetime_steps = food_lifetime_steps
+        self.food_durability = food_durability
         self.energy_loss_per_step = energy_loss_per_step
         self.reward_food = reward_food
         self.clone_threshold = clone_threshold
@@ -67,7 +68,7 @@ class FieldV4:
         self.starvation_threshold = death_threshold + life_left
         self.transfer_amount = transfer_amount
 
-        # Positive values are remaining lifetimes, not consumable food quantities.
+        # Positive values are remaining consumable food durability.
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
             AgentV4(
@@ -80,14 +81,13 @@ class FieldV4:
         self.spawn_objects(prob=initial_food_prob)
         self.altruism_count = 0
         self.acting_agent_count = 0
-        self.positive_altruism_count = 0
 
     def spawn_objects(self, prob=None):
-        """Spawn food or refresh existing food to its full lifetime."""
+        """Spawn food or refresh existing food to its full durability."""
         if prob is None:
             prob = self.step_food_prob
         spawn_mask = np.random.rand(self.field_size, self.field_size) < prob
-        self.grid_food[spawn_mask] = self.food_lifetime_steps
+        self.grid_food[spawn_mask] = self.food_durability
 
     @staticmethod
     def _neighbor_cells(position, field_size):
@@ -195,14 +195,25 @@ class FieldV4:
             if action in ((1, 0), (1, 1)):
                 dx, dy = -dx, -dy
         position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
-        food_reward = state.reward_food if state.food[position] > 0 else 0.0
-        return StepResult(index, position, recipient, transfer, food_reward)
+        return StepResult(index, position, recipient, transfer)
 
     def step(self) -> list[int]:
         """Advance the field and return the ages of agents that died this step."""
         state = self.snapshot()
         inputs = self.prepare_step_inputs(state)
         results = [self.compute_agent_step(state, item) for item in inputs]
+
+        # Resolve food competition after every movement is known.
+        contenders = {}
+        for result in results:
+            if state.food[result.position] > 0:
+                contenders.setdefault(result.position, []).append(result.agent_index)
+        food_rewards = np.zeros(len(self.agents), dtype=float)
+        for position, indices in contenders.items():
+            count = min(int(state.food[position]), len(indices))
+            winners = random.sample(indices, count) if count < len(indices) else indices
+            food_rewards[winners] = state.reward_food
+            self.grid_food[position] -= count
 
         # Accumulate all transfers before committing any live agent state.
         incoming = np.zeros(len(self.agents), dtype=float)
@@ -211,7 +222,6 @@ class FieldV4:
                 incoming[result.recipient_index] += result.transfer
         self.acting_agent_count = len(results)
         self.altruism_count = sum(result.transfer > 0 for result in results)
-        self.positive_altruism_count = self.altruism_count
         for result in results:
             index = result.agent_index
             agent = self.agents[index]
@@ -219,7 +229,7 @@ class FieldV4:
             agent.age += 1
             agent.energy = (
                 state.energies[index] - state.energy_loss - result.transfer
-                + incoming[index] + result.food_reward
+                + incoming[index] + food_rewards[index]
             )
 
         next_agents = []
@@ -237,6 +247,5 @@ class FieldV4:
                 next_agents.append(agent)
         self.agents = next_agents
 
-        np.maximum(self.grid_food - 1, 0, out=self.grid_food)
         self.spawn_objects()
         return death_ages

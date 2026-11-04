@@ -3,33 +3,18 @@
   "agent_class": "AgentV5",
   "field_class": "FieldV5",
   "simulation": {
-    "total_steps": 100000,
-    "eval_start_step": 50001,
-    "num_runs": 1,
+    "total_steps": 300000,
+    "eval_start_step": 150001,
+    "num_runs": 10,
     "base_seed": 42,
-    "workers": 5
+    "workers": 15
   },
   "grid_parameters": {
-    "initial_food_prob": [
-      0.1
-    ],
-    "step_food_prob": [
-      0.01
-    ],
-    "food_durability": [
-      5
-    ],
-    "death_threshold": [
-      -100,
-      -80,
-      -60,
-      -40,
-      -20,
-      -5
-    ],
-    "transfer_amount": [
-      3
-    ]
+    "initial_food_prob": [0.1],
+    "step_food_prob": [0.003],
+    "food_durability": [3],
+    "death_threshold": [-80, -60, -40, -20, -10, -5],
+    "transfer_amount": [1, 3]
   },
   "fixed_field_parameters": {
     "field_size": 10,

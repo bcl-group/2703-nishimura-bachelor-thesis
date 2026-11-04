@@ -2,6 +2,7 @@ import numpy as np
 
 
 class AgentV5:
+    weight_shape = (2, 4)
     def __init__(self, x, y, mutation_rate, weights=None):
         self.x = x
         self.y = y
@@ -9,12 +10,12 @@ class AgentV5:
         self.age = 0
         self.mutation_rate = mutation_rate
         if weights is None:
-            self.weights = np.random.randint(0, 2, (2, 4))
+            self.weights = np.random.randint(0, 2, self.weight_shape)
         else:
             self.weights = self.mutate(weights)
 
     def mutate(self, weights):
-        mutation_mask = np.random.rand(2, 4) < self.mutation_rate
+        mutation_mask = np.random.rand(*self.weight_shape) < self.mutation_rate
         new_weights = np.where(mutation_mask, 1 - weights, weights)
         return new_weights.astype(int)
 

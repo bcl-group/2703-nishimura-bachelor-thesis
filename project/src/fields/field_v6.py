@@ -5,17 +5,17 @@ def require_device(device, cuda=False):
     try:
         import torch
     except ImportError as exc:
-        raise RuntimeError("v6/v7 requires PyTorch; see README.md.") from exc
+        raise RuntimeError("v6 requires PyTorch; see README.md.") from exc
     device = torch.device(device)
-    if cuda:
-        if device.type != "cuda":
-            raise ValueError("FieldV7 requires a CUDA device.")
+    if cuda and device.type != "cuda":
+        raise ValueError("A CUDA device is required.")
+    if device.type == "cuda":
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA is unavailable; check PyTorch and the NVIDIA driver.")
-        torch.empty(0, device=device)  # 出力作成前にGPU番号も検証する。
+        device = torch.empty(0, device=device).device  # Validate and resolve cuda:N.
     elif device.type != "cpu":
-        raise ValueError("FieldV6 requires device='cpu'.")
-    return device
+        raise ValueError("FieldV6 supports CPU and CUDA devices.")
+    return torch.device("cpu") if device.type == "cpu" else device
 
 
 class FieldV6:
@@ -82,6 +82,9 @@ class FieldV6:
     def prepare_step_inputs(self):
         import torch
         n = self.population
+        if n == 0:
+            empty = torch.empty(0, dtype=torch.int64, device=self.device)
+            return empty, empty.clone(), empty.reshape(0, 2)
         ids = torch.arange(n, device=self.device)
         cells = self.positions[:, 0] * self.field_size + self.positions[:, 1]
         nearby = self.neighbor_cells[cells]
@@ -142,8 +145,7 @@ class FieldV6:
         import torch
         n = self.population
         cells = positions[:, 0] * self.field_size + positions[:, 1]
-        # 変更(v6): 一様ランダム順列をセルで安定ソートし、耐久度以内の個体に給餌。
-        # 乱数キーの同点偏りを避け、非復元抽選を維持する。
+
         lottery = torch.randperm(n, generator=self.generator, device=self.device)
         order = lottery[torch.argsort(cells[lottery], stable=True)]
         sorted_cells = cells[order]
@@ -157,46 +159,33 @@ class FieldV6:
         return rewards, consumed
 
     def step(self, inputs=None):
-        import torch
-        n = self.population
-        self.acting_agent_count = n
-        if n == 0:
-            self.altruism_count = torch.zeros((), dtype=torch.int64, device=self.device)
-            self.positive_altruism_count = self.altruism_count
-            self.spawn_objects()
-            return self.ages.clone()
-        # 変更(v6): 全ての計算が更新前の状態を参照し、最後に一括コミットする。
-        neighbors, foods, directions = self.prepare_step_inputs() if inputs is None else inputs
-        positions, transfers = self.compute_agent_step(neighbors, foods, directions)
-        rewards, consumed = self.resolve_food(positions)
-        incoming = torch.zeros_like(self.energies)
-        incoming.scatter_add_(0, neighbors.clamp(min=0), transfers)
-        energies = self.energies - self.energy_loss_per_step - transfers + incoming + rewards
-        ages = self.ages + 1
-        self.altruism_count = (transfers > 0).sum()
-        self.positive_altruism_count = self.altruism_count
-        alive = energies > self.death_threshold
-        death_ages = ages[~alive]
-        positions, energies, ages, weights = positions[alive], energies[alive], ages[alive], self.weights[alive]
-        clone = energies >= self.clone_threshold
-        # 変更(v6): 生存親・子の順序をv5と同じ「親の直後に子」で維持する。
-        repeats = 1 + clone.to(torch.int64)
-        parents = torch.repeat_interleave(torch.arange(energies.shape[0], device=self.device), repeats)
-        starts = repeats.cumsum(0) - repeats
-        child = torch.arange(parents.shape[0], device=self.device) != starts[parents]
-        energies = torch.where(clone, 0., energies)
-        self.positions = positions[parents]
-        self.energies = energies[parents]
-        self.ages = torch.where(child, 0, ages[parents])
-        self.weights = weights[parents].clone()
-        self.weights[child] = self.agent_class.mutate(self.weights[child], self.mutation_rate, self.generator)
-        self.grid_food -= consumed
-        self.spawn_objects()
-        return death_ages
+        from .batch_v6 import BatchV6
+        if inputs is not None:
+            neighbors, foods, directions = inputs
+            n = self.population
+            if (neighbors.shape != (n,) or foods.shape != (n,)
+                    or directions.shape != (n, 2)):
+                raise ValueError("Step inputs have incompatible shapes.")
+            if any(value.device != self.device for value in inputs):
+                raise ValueError("Step inputs must use the field device.")
+            if ((neighbors < -1) | (neighbors >= n)).any().item():
+                raise ValueError("Neighbor index out of range.")
+            if ((foods < -1) | (foods >= self.field_size**2)).any().item():
+                raise ValueError("Food cell out of range.")
+        batch = BatchV6([self])
+        if inputs is not None:
+            # Empty single fields still use one padded slot internally.
+            if self.population:
+                inputs = tuple(value.unsqueeze(0) for value in inputs)
+            else:
+                inputs = None
+        deaths = batch.step(inputs)
+        batch.copy_to_field(self)
+        return deaths[0][deaths[0] > 0]
 
     def genotype_counts(self):
         import torch
-        # 変更(v6): 8ビットの重みを整数化してデバイス上で集計し、256値だけ転送する。
+
         powers = 2 ** torch.arange(7, -1, -1, device=self.device)
         codes = (self.weights.reshape(-1, 8) * powers).sum(1)
         counts = torch.bincount(codes, minlength=256).cpu().tolist()

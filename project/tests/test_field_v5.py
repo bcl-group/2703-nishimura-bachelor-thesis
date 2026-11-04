@@ -190,7 +190,8 @@ class FieldV5Tests(unittest.TestCase):
 
     def test_runner_smoke_and_version_guard(self):
         config = json.loads((Path(__file__).resolve().parents[1] / 'configs/exp_v5.json').read_text())
-        config['simulation'].update(total_steps=10, eval_start_step=5, workers=1)
+        config['simulation'].update(total_steps=10, eval_start_step=5, workers=1, num_runs=1)
+        config['grid_parameters']['transfer_amount'] = [3]
         config['grid_parameters']['death_threshold'] = [-100]
         with tempfile.TemporaryDirectory() as directory:
             raw, summary = simulation.run_experiment(config, directory)

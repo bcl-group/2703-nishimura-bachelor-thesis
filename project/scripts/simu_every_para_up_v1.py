@@ -1,9 +1,12 @@
 import argparse
 import concurrent.futures
+import csv
 import itertools
 import inspect
 import json
 import random
+import time
+from collections import Counter
 from pathlib import Path
 from decimal import Decimal
 
@@ -26,6 +29,7 @@ def mean_and_std(total, squared_total, count):
     )
     return mean, std
 
+
 def run_single_simulation(
     field_class,
     param_combination,
@@ -33,13 +37,11 @@ def run_single_simulation(
     fixed_params,
     run_id=0,
     time_series_records=None,
+    genotype_records=None,
 ):
     total_steps = sim_config["total_steps"]
     eval_start_step = sim_config["eval_start_step"]
     base_seed = sim_config["base_seed"]
-
-    if not 1 <= eval_start_step <= total_steps:
-        raise ValueError("The evaluation start must be within the simulation steps.")
 
     seed = base_seed + run_id
     random.seed(seed)
@@ -54,26 +56,52 @@ def run_single_simulation(
     altruism_sum = 0
     altruism_squared_sum = 0
     record_time_series = run_id == 0 and time_series_records is not None
+    record_genotypes = run_id == 0 and genotype_records is not None
+    interval_population_sum = 0
     interval_altruism_count = 0
+    death_count = 0
+    death_age_sum = 0
+    death_age_squared_sum = 0
 
     def record_sample(sample_step, population):
-        time_series_records.append({
+        identifiers = {
             **param_combination,
             "run_id": run_id,
             "seed": seed,
             "step": sample_step,
-            "population": population,
-            "altruism_count": interval_altruism_count,
-        })
+        }
+        if record_time_series:
+            time_series_records.append({
+                **identifiers,
+                "population": population,
+                "altruism_count": interval_altruism_count,
+                "altruism_rate": interval_altruism_count / interval_population_sum if interval_population_sum > 0 else None,
+            })
+        if record_genotypes and population:
+            counts = Counter(
+                "".join(str(int(bit)) for bit in agent.weights.flat)
+                for agent in field.agents
+            )
+            genotype_records.extend(
+                {**identifiers, "genotype": genotype, "population": count}
+                for genotype, count in sorted(counts.items())
+            )
 
     for step in range(1, total_steps + 1):
-        field.step()
+        death_ages = field.step()
+        if record_time_series or record_genotypes:
+            interval_population_sum += len(field.agents)
+            interval_altruism_count += field.altruism_count
+            if step % 1000 == 0:
+                record_sample(step, len(field.agents))
+                interval_population_sum = 0
+                interval_altruism_count = 0
         if step >= eval_start_step:
-            if record_time_series:
-                interval_altruism_count += field.altruism_count
-                if step % 1000 == 0:
-                    record_sample(step, len(field.agents))
-                    interval_altruism_count = 0
+            if death_ages:
+                for age in death_ages:
+                    death_count += 1
+                    death_age_sum += age
+                    death_age_squared_sum += age * age
             population = len(field.agents)
             population_sum += population
             population_squared_sum += population**2
@@ -81,10 +109,11 @@ def run_single_simulation(
             altruism_squared_sum += field.altruism_count**2
 
         if not field.agents:
-            if record_time_series:
+            if record_time_series or record_genotypes:
                 for sample_step in range((step // 1000 + 1) * 1000, total_steps + 1, 1000):
                     record_sample(sample_step, 0)
                     interval_altruism_count = 0
+                    interval_population_sum = 0
             break
 
     evaluation_steps = total_steps - eval_start_step + 1
@@ -94,6 +123,9 @@ def run_single_simulation(
     avg_altruism_count, std_altruism_count = mean_and_std(
         altruism_sum, altruism_squared_sum, evaluation_steps
     )
+    avg_death_age, std_death_age = mean_and_std(
+        death_age_sum, death_age_squared_sum, death_count
+    )
 
     result = {
         "run_id": run_id,
@@ -102,14 +134,18 @@ def run_single_simulation(
         "std_population": std_population,
         "avg_altruism_count": avg_altruism_count,
         "std_altruism_count": std_altruism_count,
+        "avg_altruism_rate": avg_altruism_count / avg_population if avg_population > 0 else None,
+        "avg_death_age": avg_death_age,
+        "std_death_age": std_death_age,
     }
     result.update(param_combination)
     return result
 
+
 def summarize_runs(records, grid_param_keys):
     groups = (records.groupby(grid_param_keys, as_index=False) if grid_param_keys
               else records.groupby(lambda _: 0))
-    return (
+    summary = (
         groups
         .agg(
             num_runs=("run_id", "count"),
@@ -119,8 +155,15 @@ def summarize_runs(records, grid_param_keys):
             avg_altruism_count=("avg_altruism_count", "mean"),
             std_altruism_count=("avg_altruism_count", "std"),
             avg_within_run_std_altruism_count=("std_altruism_count", "mean"),
+            avg_altruism_rate=("avg_altruism_rate", "mean"),
+            std_altruism_rate=("avg_altruism_rate", "std"),
+            avg_death_age=("avg_death_age", "mean"),
+            std_death_age=("avg_death_age", "std"),
+            avg_within_run_std_death_age=("std_death_age", "mean"),
         )
     )
+
+    return summary
 
 
 def run_condition(args_tuple):
@@ -128,8 +171,10 @@ def run_condition(args_tuple):
     num_runs = sim_config["num_runs"]
     records = []
     time_series_records = []
+    genotype_records = []
 
     for run_id in range(num_runs):
+        run_started_at = time.perf_counter()
         rec = run_single_simulation(
             field_class=field_class,
             param_combination=param_combination,
@@ -137,16 +182,39 @@ def run_condition(args_tuple):
             fixed_params=fixed_params,
             run_id=run_id,
             time_series_records=time_series_records if run_id == 0 else None,
+            genotype_records=genotype_records if run_id == 0 else None,
         )
+        run_elapsed_seconds = time.perf_counter() - run_started_at
         records.append(rec)
 
         param_str = ", ".join([f"{k}={v}" for k, v in param_combination.items()])
         print(
-            f"Completed: [{param_str}], run {run_id + 1}/{num_runs}",
+            f"Completed: [{param_str}], run {run_id + 1}/{num_runs}, "
+            f"elapsed: {run_elapsed_seconds:.3f} s",
             flush=True,
         )
 
-    return records, time_series_records
+    return records, time_series_records, genotype_records
+
+
+def _iter_condition_results(tasks, workers):
+    if workers == 1:
+        yield from map(run_condition, tasks)
+        return
+    task_iterator = iter(tasks)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+        pending = {
+            executor.submit(run_condition, task)
+            for task in itertools.islice(task_iterator, workers)
+        }
+        while pending:
+            done, pending = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                result = future.result()
+                next_task = next(task_iterator, None)
+                if next_task is not None:
+                    pending.add(executor.submit(run_condition, next_task))
+                yield result
 
 
 def expand_grid_parameters(grid_params):
@@ -171,6 +239,11 @@ def expand_grid_parameters(grid_params):
 
 
 def run_experiment(config, data_dir=None):
+    if config.get("field_class") == "FieldV3":
+        from .simu_every_para_up_v1 import run_experiment as run_cpu
+        return run_cpu(config, data_dir)
+
+    experiment_started_at = time.perf_counter()
     exp_name = config.get("experiment_name", "default_exp")
     if not isinstance(exp_name, str) or not exp_name or exp_name in {".", ".."} or "/" in exp_name or "\\" in exp_name:
         raise ValueError("experiment_name must be a directory name.")
@@ -186,6 +259,8 @@ def run_experiment(config, data_dir=None):
 
     field_class = get_field_class(config["field_class"])
     agent_class = get_agent_class(config["agent_class"])
+    if (field_class.__name__, agent_class.__name__) not in [(f"FieldV{v}", f"AgentV{v}") for v in (1, 2, 3)]:
+        raise ValueError("simu_every_para_up_v1 requires FieldV1/AgentV1 or FieldV2/AgentV2 or FieldV3/AgentV3.")
     if agent_class.__name__.removeprefix("Agent") != field_class.__name__.removeprefix("Field"):
         raise ValueError("agent_class and field_class must use the same version.")
     combinations = expand_grid_parameters(grid_params)
@@ -201,6 +276,7 @@ def run_experiment(config, data_dir=None):
     raw_path = exp_data_dir / "raw_data.csv"
     summary_path = exp_data_dir / "summary_data.csv"
     time_series_path = exp_data_dir / "time_series_data.csv"
+    genotype_path = exp_data_dir / "genotype_time_series_data.csv"
 
     grid_keys = list(grid_params.keys())
 
@@ -215,34 +291,35 @@ def run_experiment(config, data_dir=None):
     ]
 
     all_raw_records = []
-    all_time_series_records = []
-
-    if workers == 1:
-        for task in tasks:
-            records, time_series_records = run_condition(task)
+    with time_series_path.open("w", newline="", encoding="utf-8") as series_file, \
+            genotype_path.open("w", newline="", encoding="utf-8") as genotype_file:
+        series_writer = csv.DictWriter(
+            series_file,
+            fieldnames=[*grid_keys, "run_id", "seed", "step", "population", "altruism_count", "altruism_rate"],
+        )
+        genotype_writer = csv.DictWriter(
+            genotype_file,
+            fieldnames=[*grid_keys, "run_id", "seed", "step", "genotype", "population"],
+        )
+        series_writer.writeheader()
+        genotype_writer.writeheader()
+        for records, time_series_records, genotype_records in _iter_condition_results(tasks, workers):
             all_raw_records.extend(records)
-            all_time_series_records.extend(time_series_records)
-    else:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
-            for records, time_series_records in executor.map(run_condition, tasks):
-                all_raw_records.extend(records)
-                all_time_series_records.extend(time_series_records)
+            series_writer.writerows(time_series_records)
+            genotype_writer.writerows(genotype_records)
 
     raw_df = pd.DataFrame(all_raw_records)
     summary_df = summarize_runs(raw_df, grid_keys)
-    time_series_df = pd.DataFrame(
-        all_time_series_records,
-        columns=[*grid_keys, "run_id", "seed", "step", "population", "altruism_count"],
-    ).sort_values([*grid_keys, "step"]).reset_index(drop=True)
-
     raw_df.to_csv(raw_path, index=False)
     summary_df.to_csv(summary_path, index=False)
-    time_series_df.to_csv(time_series_path, index=False)
+    experiment_elapsed_seconds = time.perf_counter() - experiment_started_at
 
     print(f"\nSimulation Complete!")
+    print(f"Total elapsed time: {experiment_elapsed_seconds:.3f} s")
     print(f"Raw data saved to: {raw_path}")
     print(f"Summary data saved to: {summary_path}")
     print(f"Time series data saved to: {time_series_path}")
+    print(f"Genotype time series data saved to: {genotype_path}")
 
     return raw_df, summary_df
 
