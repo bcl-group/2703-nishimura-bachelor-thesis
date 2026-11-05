@@ -2,7 +2,8 @@ import numpy as np
 
 
 class AgentV5:
-    weight_shape = (2, 4)
+    weight_shape = (2, 2)
+
     def __init__(self, x, y, mutation_rate, weights=None):
         self.x = x
         self.y = y
@@ -19,13 +20,11 @@ class AgentV5:
         new_weights = np.where(mutation_mask, 1 - weights, weights)
         return new_weights.astype(int)
 
-    def decide_action(self, see_food, see_other, me_starving, other_starving):
+    def decide_action(self, see_food, see_other):
         return self.action_from_weights(
-            self.weights, see_food, see_other, me_starving, other_starving
+            self.weights, see_food, see_other
         )
 
     @staticmethod
-    def action_from_weights(weights, see_food, see_other, me_starving, other_starving):
-        input_vec = np.array([see_food, see_other, me_starving, other_starving])
-        raw_output = np.dot(weights, input_vec) % 2
-        return raw_output[0:2]
+    def action_from_weights(weights, *observations):
+        return np.dot(weights, observations) % 2

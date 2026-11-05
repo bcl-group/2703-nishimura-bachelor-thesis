@@ -36,9 +36,12 @@ class StepResult:
     position: tuple[int, int]
     recipient_index: int | None
     transfer: float
+    level: int = 0
 
 
 class FieldV4:
+    agent_class = AgentV4
+
     def __init__(
         self,
         field_size=10,
@@ -68,10 +71,10 @@ class FieldV4:
         self.starvation_threshold = death_threshold + life_left
         self.transfer_amount = transfer_amount
 
-        # Positive values are remaining consumable food durability.
+        # Positive values are remaining consumable food units; time alone does not reduce them.
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
-            AgentV4(
+            self.agent_class(
                 random.randint(0, field_size - 1),
                 random.randint(0, field_size - 1),
                 mutation_rate=mutation_rate,
@@ -83,7 +86,7 @@ class FieldV4:
         self.acting_agent_count = 0
 
     def spawn_objects(self, prob=None):
-        """Spawn food or refresh existing food to its full durability."""
+        """Spawn food or reset existing food to its initial durability."""
         if prob is None:
             prob = self.step_food_prob
         spawn_mask = np.random.rand(self.field_size, self.field_size) < prob
@@ -136,7 +139,7 @@ class FieldV4:
         """Copy the beginning-of-step environment; no live agent references escape."""
         positions = np.array([(a.x, a.y) for a in self.agents], dtype=int).reshape(-1, 2)
         energies = np.array([a.energy for a in self.agents], dtype=float)
-        weights = np.array([a.weights for a in self.agents], dtype=int).reshape(-1, 2, 4)
+        weights = np.array([a.weights for a in self.agents], dtype=int).reshape(-1, *self.agent_class.weight_shape)
         food = self.grid_food.copy()
         for array in (positions, energies, weights, food):
             array.setflags(write=False)
@@ -148,7 +151,7 @@ class FieldV4:
 
     @staticmethod
     def prepare_step_inputs(state):
-        """Resolve all random choices before evaluating any individual agent."""
+        """Resolve observation and movement random choices before individual calculations."""
         # Build one field_size x field_size map from the immutable step snapshot.
         grid = [[[] for _ in range(state.field_size)] for _ in range(state.field_size)]
         for index, (x, y) in enumerate(state.positions):
@@ -164,13 +167,13 @@ class FieldV4:
             inputs.append(StepInput(index, neighbor, food, direction))
         return inputs
 
-    @staticmethod
-    def compute_agent_step(state, step_input):
+    @classmethod
+    def compute_agent_step(cls, state, step_input):
         """Pure calculation: reads a snapshot and returns one agent's effects."""
         index = step_input.agent_index
         neighbor = step_input.neighbor_index
         food = step_input.food_position
-        action = tuple(AgentV4.action_from_weights(
+        action = tuple(cls.agent_class.action_from_weights(
             state.weights[index], int(food is not None), int(neighbor is not None),
             int(state.energies[index] <= state.starvation_threshold),
             int(neighbor is not None and state.energies[neighbor] <= state.starvation_threshold),
@@ -197,23 +200,31 @@ class FieldV4:
         position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
         return StepResult(index, position, recipient, transfer)
 
+    @staticmethod
+    def resolve_food(state, results):
+        candidates = {}
+        for result in results:
+            if state.food[result.position] > 0:
+                candidates.setdefault(result.position, []).append(result.agent_index)
+        rewards = np.zeros(len(state.positions), dtype=float)
+        consumed = np.zeros_like(state.food)
+        for position in sorted(candidates):
+            indices = sorted(candidates[position])
+            count = min(len(indices), int(state.food[position]))
+            winners = random.sample(indices, count) if count < len(indices) else indices
+            rewards[winners] = state.reward_food
+            consumed[position] = count
+        return rewards, consumed
+
     def step(self) -> list[int]:
         """Advance the field and return the ages of agents that died this step."""
         state = self.snapshot()
         inputs = self.prepare_step_inputs(state)
-        results = [self.compute_agent_step(state, item) for item in inputs]
-
-        # Resolve food competition after every movement is known.
-        contenders = {}
-        for result in results:
-            if state.food[result.position] > 0:
-                contenders.setdefault(result.position, []).append(result.agent_index)
-        food_rewards = np.zeros(len(self.agents), dtype=float)
-        for position, indices in contenders.items():
-            count = min(int(state.food[position]), len(indices))
-            winners = random.sample(indices, count) if count < len(indices) else indices
-            food_rewards[winners] = state.reward_food
-            self.grid_food[position] -= count
+        results = sorted(
+            (self.compute_agent_step(state, item) for item in inputs),
+            key=lambda result: result.agent_index,
+        )
+        food_rewards, consumed = self.resolve_food(state, results)
 
         # Accumulate all transfers before committing any live agent state.
         incoming = np.zeros(len(self.agents), dtype=float)
@@ -226,6 +237,8 @@ class FieldV4:
             index = result.agent_index
             agent = self.agents[index]
             agent.x, agent.y = result.position
+            if hasattr(agent, "altruism_level"):
+                agent.altruism_level = result.level
             agent.age += 1
             agent.energy = (
                 state.energies[index] - state.energy_loss - result.transfer
@@ -241,11 +254,12 @@ class FieldV4:
                 continue
             if agent.energy >= self.clone_threshold:
                 agent.energy = 0
-                child = AgentV4(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
+                child = self.agent_class(agent.x, agent.y, mutation_rate=self.mutation_rate, weights=agent.weights)
                 next_agents.extend([agent, child])
             else:
                 next_agents.append(agent)
         self.agents = next_agents
 
+        self.grid_food[:] = state.food - consumed
         self.spawn_objects()
         return death_ages

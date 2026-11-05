@@ -92,7 +92,7 @@ def run_single_simulation(
         if record_time_series or record_genotypes:
             interval_population_sum += len(field.agents)
             interval_altruism_count += field.altruism_count
-            if step == 1 or step % 3000 == 0:
+            if step % 1000 == 0:
                 record_sample(step, len(field.agents))
                 interval_population_sum = 0
                 interval_altruism_count = 0
@@ -110,7 +110,7 @@ def run_single_simulation(
 
         if not field.agents:
             if record_time_series or record_genotypes:
-                for sample_step in range((step // 3000 + 1) * 3000, total_steps + 1, 3000):
+                for sample_step in range((step // 1000 + 1) * 1000, total_steps + 1, 1000):
                     record_sample(sample_step, 0)
                     interval_altruism_count = 0
                     interval_population_sum = 0

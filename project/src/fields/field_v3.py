@@ -179,11 +179,6 @@ class FieldV3:
             state.weights[index], int(food is not None), int(neighbor is not None),
             int(state.levels[neighbor]) if neighbor is not None else 0,
         ))
-        observations = [int(food is not None), int(neighbor is not None)]
-        observations.append(int(state.levels[neighbor]) if neighbor is not None else 0)
-        output = np.dot(state.weights[index], observations) % 2
-        action = tuple(output[:2])
-        level = int(action == (0, 1))
         transfer = 0.0
         recipient = None
         if action == (0, 1) and neighbor is not None:
@@ -204,7 +199,7 @@ class FieldV3:
             if action in ((1, 0), (1, 1)):
                 dx, dy = -dx, -dy
         position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
-        return StepResult(index, position, recipient, transfer, level)
+        return StepResult(index, position, recipient, transfer)
 
     @staticmethod
     def resolve_food(state, results):

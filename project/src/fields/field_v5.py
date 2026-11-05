@@ -18,7 +18,6 @@ class StepSnapshot:
     energy_loss: float
     reward_food: float
     death_threshold: float
-    levels: np.ndarray
     starvation_threshold: float
     transfer_amount: float
 
@@ -42,6 +41,7 @@ class StepResult:
 
 class FieldV5:
     agent_class = AgentV5
+
     def __init__(
         self,
         field_size=10,
@@ -49,7 +49,7 @@ class FieldV5:
         mutation_rate=0.05,
         initial_food_prob=0.1,
         step_food_prob=0.003,
-        food_durability=3,
+        food_durability=5,
         energy_loss_per_step=0.1,
         reward_food=1.0,
         clone_threshold=100.0,
@@ -140,15 +140,13 @@ class FieldV5:
         positions = np.array([(a.x, a.y) for a in self.agents], dtype=int).reshape(-1, 2)
         energies = np.array([a.energy for a in self.agents], dtype=float)
         weights = np.array([a.weights for a in self.agents], dtype=int).reshape(-1, *self.agent_class.weight_shape)
-        levels = np.array([getattr(a, "altruism_level", 0) for a in self.agents], dtype=int)
-        levels.setflags(write=False)
         food = self.grid_food.copy()
         for array in (positions, energies, weights, food):
             array.setflags(write=False)
         return StepSnapshot(
             positions, energies, weights, food, self.field_size,
             self.energy_loss_per_step, self.reward_food, self.death_threshold,
-            levels, self.starvation_threshold, self.transfer_amount,
+            self.starvation_threshold, self.transfer_amount,
         )
 
     @staticmethod
@@ -175,15 +173,9 @@ class FieldV5:
         index = step_input.agent_index
         neighbor = step_input.neighbor_index
         food = step_input.food_position
-        observations = [int(food is not None), int(neighbor is not None)]
-        if cls.agent_class.weight_shape == (3, 3):
-            observations.append(int(state.levels[neighbor]) if neighbor is not None else 0)
-        elif cls.agent_class.weight_shape == (2, 4):
-            observations.extend([int(state.energies[index] <= state.starvation_threshold),
-                int(neighbor is not None and state.energies[neighbor] <= state.starvation_threshold)])
-        output = np.dot(state.weights[index], observations) % 2
-        action = tuple(output[:2])
-        level = int(output[2]) if len(output) == 3 else 0
+        action = tuple(cls.agent_class.action_from_weights(
+            state.weights[index], int(food is not None), int(neighbor is not None),
+        ))
         transfer = 0.0
         recipient = None
         if action == (0, 1) and neighbor is not None:
@@ -204,7 +196,7 @@ class FieldV5:
             if action in ((1, 0), (1, 1)):
                 dx, dy = -dx, -dy
         position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
-        return StepResult(index, position, recipient, transfer, level)
+        return StepResult(index, position, recipient, transfer)
 
     @staticmethod
     def resolve_food(state, results):
