@@ -6,7 +6,7 @@ import inspect
 import json
 import random
 import time
-from collections import Counter
+from collections import Counter, deque
 from pathlib import Path
 from decimal import Decimal
 
@@ -29,7 +29,6 @@ def mean_and_std(total, squared_total, count):
     )
     return mean, std
 
-
 def run_single_simulation(
     field_class,
     param_combination,
@@ -42,7 +41,7 @@ def run_single_simulation(
     total_steps = sim_config["total_steps"]
     eval_start_step = sim_config["eval_start_step"]
     base_seed = sim_config["base_seed"]
-
+    
     seed = base_seed + run_id
     random.seed(seed)
     np.random.seed(seed)
@@ -55,10 +54,12 @@ def run_single_simulation(
     population_squared_sum = 0
     altruism_sum = 0
     altruism_squared_sum = 0
+    acting_agent_sum = 0
     record_time_series = run_id == 0 and time_series_records is not None
     record_genotypes = run_id == 0 and genotype_records is not None
     interval_population_sum = 0
     interval_altruism_count = 0
+    interval_acting_agent_count = 0
     death_count = 0
     death_age_sum = 0
     death_age_squared_sum = 0
@@ -75,7 +76,7 @@ def run_single_simulation(
                 **identifiers,
                 "population": population,
                 "altruism_count": interval_altruism_count,
-                "altruism_rate": interval_altruism_count / interval_population_sum if interval_population_sum > 0 else None,
+                "altruism_rate": interval_altruism_count / interval_acting_agent_count if interval_acting_agent_count > 0 else None,
             })
         if record_genotypes and population:
             counts = Counter(
@@ -88,32 +89,31 @@ def run_single_simulation(
             )
 
     for step in range(1, total_steps + 1):
+        # FieldV3 records deaths during removal, avoiding population ID scans.
         death_ages = field.step()
         if record_time_series or record_genotypes:
             interval_population_sum += len(field.agents)
+            interval_acting_agent_count += field.acting_agent_count
             interval_altruism_count += field.altruism_count
             if step % 1000 == 0:
                 record_sample(step, len(field.agents))
                 interval_population_sum = 0
+                interval_acting_agent_count = 0
                 interval_altruism_count = 0
         if step >= eval_start_step:
-            if death_ages:
-                for age in death_ages:
-                    death_count += 1
-                    death_age_sum += age
-                    death_age_squared_sum += age * age
+            # Warmup deaths are returned too, but only the evaluation window counts.
+            for age in death_ages:
+                death_count += 1
+                death_age_sum += age
+                death_age_squared_sum += age * age
             population = len(field.agents)
             population_sum += population
             population_squared_sum += population**2
             altruism_sum += field.altruism_count
             altruism_squared_sum += field.altruism_count**2
+            acting_agent_sum += field.acting_agent_count
 
         if not field.agents:
-            if record_time_series or record_genotypes:
-                for sample_step in range((step // 1000 + 1) * 1000, total_steps + 1, 1000):
-                    record_sample(sample_step, 0)
-                    interval_altruism_count = 0
-                    interval_population_sum = 0
             break
 
     evaluation_steps = total_steps - eval_start_step + 1
@@ -123,6 +123,7 @@ def run_single_simulation(
     avg_altruism_count, std_altruism_count = mean_and_std(
         altruism_sum, altruism_squared_sum, evaluation_steps
     )
+    
     avg_death_age, std_death_age = mean_and_std(
         death_age_sum, death_age_squared_sum, death_count
     )
@@ -130,38 +131,48 @@ def run_single_simulation(
     result = {
         "run_id": run_id,
         "seed": seed,
-        "avg_population": avg_population,
-        "std_population": std_population,
-        "avg_altruism_count": avg_altruism_count,
-        "std_altruism_count": std_altruism_count,
-        "avg_altruism_rate": avg_altruism_count / avg_population if avg_population > 0 else None,
-        "avg_death_age": avg_death_age,
-        "std_death_age": std_death_age,
+        "is_extinct": not field.agents,  # エージェントが0で終了（絶滅）したか
+        "avg_population": avg_population if field.agents else np.nan,
+        "std_population": std_population if field.agents else np.nan,
+        "avg_altruism_count": avg_altruism_count if field.agents else np.nan,
+        "std_altruism_count": std_altruism_count if field.agents else np.nan,
+        "avg_altruism_rate": (altruism_sum / acting_agent_sum) if (field.agents and acting_agent_sum > 0) else np.nan,
+        "avg_death_age": avg_death_age if field.agents else np.nan,
+        "std_death_age": std_death_age if field.agents else np.nan,
     }
     result.update(param_combination)
     return result
 
-
 def summarize_runs(records, grid_param_keys):
     groups = (records.groupby(grid_param_keys, as_index=False) if grid_param_keys
               else records.groupby(lambda _: 0))
-    summary = (
-        groups
-        .agg(
-            num_runs=("run_id", "count"),
-            avg_population=("avg_population", "mean"),
-            std_population=("avg_population", "std"),
-            avg_within_run_std_population=("std_population", "mean"),
-            avg_altruism_count=("avg_altruism_count", "mean"),
-            std_altruism_count=("avg_altruism_count", "std"),
-            avg_within_run_std_altruism_count=("std_altruism_count", "mean"),
-            avg_altruism_rate=("avg_altruism_rate", "mean"),
-            std_altruism_rate=("avg_altruism_rate", "std"),
-            avg_death_age=("avg_death_age", "mean"),
-            std_death_age=("avg_death_age", "std"),
-            avg_within_run_std_death_age=("std_death_age", "mean"),
-        )
+    
+    # 生存した run のみを抽出したグループ
+    survived_records = records[~records["is_extinct"]]
+    survived_groups = (survived_records.groupby(grid_param_keys, as_index=False) if grid_param_keys
+                       else survived_records.groupby(lambda _: 0))
+
+    # 全体の試行数と生存試行数を集計
+    total_runs_summary = groups.agg(total_runs=("run_id", "count"))
+    survived_summary = survived_groups.agg(
+        survived_runs=("run_id", "count"),
+        avg_population=("avg_population", "mean"),
+        std_population=("avg_population", "std"),
+        avg_within_run_std_population=("std_population", "mean"),
+        avg_altruism_count=("avg_altruism_count", "mean"),
+        std_altruism_count=("avg_altruism_count", "std"),
+        avg_within_run_std_altruism_count=("std_altruism_count", "mean"),
+        avg_altruism_rate=("avg_altruism_rate", "mean"),
+        std_altruism_rate=("avg_altruism_rate", "std"),
+        avg_death_age=("avg_death_age", "mean"),
+        std_death_age=("avg_death_age", "std"),
+        avg_within_run_std_death_age=("std_death_age", "mean"),
     )
+
+    # 結合して絶滅率（extinction_rate）を算出
+    summary = pd.merge(total_runs_summary, survived_summary, on=grid_param_keys, how="left")
+    summary["survived_runs"] = summary["survived_runs"].fillna(0).astype(int)
+    summary["extinction_rate"] = 1.0 - (summary["survived_runs"] / summary["total_runs"])
 
     return summary
 
@@ -174,6 +185,7 @@ def run_condition(args_tuple):
     genotype_records = []
 
     for run_id in range(num_runs):
+        # Measure wall-clock duration, including initialization and sample collection.
         run_started_at = time.perf_counter()
         rec = run_single_simulation(
             field_class=field_class,
@@ -196,7 +208,6 @@ def run_condition(args_tuple):
 
     return records, time_series_records, genotype_records
 
-
 def _iter_condition_results(tasks, workers):
     if workers == 1:
         yield from map(run_condition, tasks)
@@ -208,14 +219,13 @@ def _iter_condition_results(tasks, workers):
             for task in itertools.islice(task_iterator, workers)
         }
         while pending:
-            done, pending = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+            done, pending = concurrent.futures.wait(pending,return_when=concurrent.futures.FIRST_COMPLETED)
             for future in done:
                 result = future.result()
                 next_task = next(task_iterator, None)
                 if next_task is not None:
                     pending.add(executor.submit(run_condition, next_task))
                 yield result
-
 
 def expand_grid_parameters(grid_params):
     expanded = {}
@@ -239,10 +249,7 @@ def expand_grid_parameters(grid_params):
 
 
 def run_experiment(config, data_dir=None):
-    if config.get("field_class") == "FieldV3":
-        from .simu_every_para_up_v1 import run_experiment as run_cpu
-        return run_cpu(config, data_dir)
-
+    # Measure total wall time, including worker startup, aggregation and CSV writes.
     experiment_started_at = time.perf_counter()
     exp_name = config.get("experiment_name", "default_exp")
     if not isinstance(exp_name, str) or not exp_name or exp_name in {".", ".."} or "/" in exp_name or "\\" in exp_name:
@@ -259,8 +266,9 @@ def run_experiment(config, data_dir=None):
 
     field_class = get_field_class(config["field_class"])
     agent_class = get_agent_class(config["agent_class"])
+    # This runner requires the death-age return contract also provided by V3_1.
     if (field_class.__name__, agent_class.__name__) not in [(f"FieldV1_1", f"AgentV1_1")]:
-        raise ValueError("simu_every_para_up_v1_1 requires FieldV1_1/AgentV1_1")
+        raise ValueError("simu_every_para_up_v1_1 requires FieldV1_1 and AgentV1_1.")
     if agent_class.__name__.removeprefix("Agent") != field_class.__name__.removeprefix("Field"):
         raise ValueError("agent_class and field_class must use the same version.")
     combinations = expand_grid_parameters(grid_params)

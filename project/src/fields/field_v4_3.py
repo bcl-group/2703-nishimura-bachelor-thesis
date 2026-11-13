@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.agents.agent_v1_1 import AgentV1_1
+from src.agents.agent_v4_3 import AgentV4_3
 
 
 @dataclass(frozen=True)
@@ -41,9 +41,8 @@ class StepResult:
     level: int = 0
 
 
-class FieldV1_1:
-    agent_class = AgentV1_1
-
+class FieldV4_3:
+    agent_class = AgentV4_3
     def __init__(
         self,
         field_size=10,
@@ -117,7 +116,7 @@ class FieldV1_1:
         positions = np.array([(a.x, a.y) for a in self.agents], dtype=int).reshape(-1, 2)
         energies = np.array([a.energy for a in self.agents], dtype=float)
         weights = np.array([a.weights for a in self.agents], dtype=int).reshape(-1, *self.agent_class.weight_shape)
-        levels = np.array([getattr(a, "altruism_level", 0) for a in self.agents], dtype=int)
+        levels = np.array([a.altruism_level for a in self.agents], dtype=int)
         levels.setflags(write=False)
         food = self.grid_food.copy()
         for array in (positions, energies, weights, food):
@@ -136,17 +135,16 @@ class FieldV1_1:
             grid[x][y].append(index)
         inputs = []
         for index, position in enumerate(state.positions):
-            cells = FieldV1_1._neighbor_cells(position, state.field_size)
-            neighbors = FieldV1_1._neighbor_indices(grid, cells, exclude_index=index)
+            cells = FieldV4_3._neighbor_cells(position, state.field_size)
+            neighbors = FieldV4_3._neighbor_indices(grid, cells, exclude_index=index)
             foods = [cell for cell in cells if state.food[cell] > 0]
             neighbor = random.choice(neighbors) if neighbors else None
             food = random.choice(foods) if foods else None
             direction = (random.choice([-1, 0, 1]), random.choice([-1, 0, 1]))
-            
             x, y = map(int, position)
             safe_cells = [
                 (cx, cy) for cx, cy in cells
-                if (len(grid[cx][cy]) == 0) or ((cx, cy) == (x, y) and len(grid[cx][cy]) == 1)
+                if (len(grid[cx][cy]) == 0) or (grid[cx][cy] == [index])
             ]
             
             inputs.append(StepInput(index, neighbor, food, direction, safe_cells))
@@ -154,19 +152,22 @@ class FieldV1_1:
 
     @classmethod
     def compute_agent_step(cls, state, step_input):
-        """エージェント単体の行動・状態更新量を純粋計算。"""
+        """Pure calculation: reads a snapshot and returns one agent's effects."""
         index = step_input.agent_index
         neighbor = step_input.neighbor_index
         food = step_input.food_position
-
-        observations = [int(food is not None), int(neighbor is not None)]
-        output = np.dot(state.weights[index], observations) % 2
+        neighbor_level = int(state.levels[neighbor]) if neighbor is not None else 0
+        output = tuple(cls.agent_class.action_from_weights(
+            state.weights[index], int(food is not None), int(neighbor is not None), neighbor_level,
+            int(state.energies[index] <= state.starvation_threshold),
+            int(neighbor is not None and state.energies[neighbor] <= state.starvation_threshold),
+        ))
         action = tuple(output[:2])
-        level = state.levels[index]
+        current_level = output[2]
 
         transfer = 0.0
         recipient = None
-        if level == 1 and neighbor is not None:
+        if current_level == 1 and neighbor is not None :
             transfer = max(0.0, state.transfer_amount)
             recipient = neighbor
 
@@ -195,7 +196,7 @@ class FieldV1_1:
             dx, dy = step_input.random_direction
 
         position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
-        return StepResult(index, position, recipient, transfer, level)
+        return StepResult(index, position, recipient, transfer, current_level)
 
     @staticmethod
     def resolve_food(state, results):
@@ -229,7 +230,10 @@ class FieldV1_1:
             if result.recipient_index is not None:
                 incoming[result.recipient_index] += result.transfer
 
-        self.acting_agent_count = len(results)
+        self.acting_agent_count = sum(
+            1 for item in inputs
+            if item.neighbor_index is not None
+        )
         self.altruism_count = sum(result.transfer > 0 for result in results)
 
         for result in results:
@@ -237,6 +241,7 @@ class FieldV1_1:
             agent = self.agents[index]
             agent.x, agent.y = result.position
             agent.age += 1
+            agent.altruism_level = result.level
             agent.energy = (
                 state.energies[index] - state.energy_loss - result.transfer
                 + incoming[index] + food_rewards[index]

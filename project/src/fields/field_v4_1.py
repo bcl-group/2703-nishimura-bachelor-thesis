@@ -39,7 +39,6 @@ class StepResult:
     transfer: float
 
 
-
 class FieldV4_1:
     agent_class = AgentV4_1
     def __init__(
@@ -70,7 +69,6 @@ class FieldV4_1:
         self.death_threshold = death_threshold
         self.starvation_threshold = death_threshold + life_left
         self.transfer_amount = transfer_amount
-
         # Positive values are remaining consumable food units; time alone does not reduce them.
         self.grid_food = np.zeros((field_size, field_size), dtype=int)
         self.agents = [
@@ -108,24 +106,11 @@ class FieldV4_1:
             if index != exclude_index
         ]
 
-    def get_nearest_agent(self, agent):
-        # Preserve the existing helper's random selection within the 3x3 neighborhood.
-        neighbors = [
-            other for other in self.agents
-            if other is not agent
-            and min(abs(other.x - agent.x), self.field_size - abs(other.x - agent.x)) <= 1
-            and min(abs(other.y - agent.y), self.field_size - abs(other.y - agent.y)) <= 1
-        ]
-        return random.choice(neighbors) if neighbors else None
-
     @staticmethod
     def _torus_direction(src_x, src_y, target_x, target_y, field_size):
         diff_x = (target_x - src_x + field_size // 2) % field_size - field_size // 2
         diff_y = (target_y - src_y + field_size // 2) % field_size - field_size // 2
         return int(np.sign(diff_x)), int(np.sign(diff_y))
-
-    def get_torus_direction(self, src_x, src_y, target_x, target_y):
-        return self._torus_direction(src_x, src_y, target_x, target_y, self.field_size)
 
     def snapshot(self):
         """Copy the beginning-of-step environment; no live agent references escape."""

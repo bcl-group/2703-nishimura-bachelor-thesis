@@ -5,7 +5,6 @@ import numpy as np
 
 from src.agents.agent_v2 import AgentV2
 
-
 @dataclass(frozen=True)
 class StepSnapshot:
     """ステップ計算全体で使用される不変の状態およびパラメータ設定。"""
@@ -29,6 +28,7 @@ class StepInput:
     neighbor_index: int | None
     food_position: tuple[int, int] | None
     random_direction: tuple[int, int]
+    safe_cells_for_agent: list[tuple[int, int]]
 
 
 @dataclass(frozen=True)
@@ -42,7 +42,6 @@ class StepResult:
 
 class FieldV2:
     agent_class = AgentV2
-
     def __init__(
         self,
         field_size=10,
@@ -105,30 +104,11 @@ class FieldV2:
             if index != exclude_index
         ]
 
-    def get_nearest_agent(self, agent):
-        neighbors = [
-            other for other in self.agents
-            if other is not agent
-            and min(abs(other.x - agent.x), self.field_size - abs(other.x - agent.x)) <= 1
-            and min(abs(other.y - agent.y), self.field_size - abs(other.y - agent.y)) <= 1
-        ]
-        return random.choice(neighbors) if neighbors else None
-
-    def get_nearest_food(self, agent):
-        neighbors = [
-            cell for cell in self._neighbor_cells((agent.x, agent.y), self.field_size)
-            if self.grid_food[cell] > 0
-        ]
-        return np.array(random.choice(neighbors), dtype=int) if neighbors else None
-
     @staticmethod
     def _torus_direction(src_x, src_y, target_x, target_y, field_size):
         diff_x = (target_x - src_x + field_size // 2) % field_size - field_size // 2
         diff_y = (target_y - src_y + field_size // 2) % field_size - field_size // 2
         return int(np.sign(diff_x)), int(np.sign(diff_y))
-
-    def get_torus_direction(self, src_x, src_y, target_x, target_y):
-        return self._torus_direction(src_x, src_y, target_x, target_y, self.field_size)
 
     def snapshot(self):
         """ステップ開始時の環境状態のスナップショットを作成（不変オブジェクト）。"""
@@ -160,42 +140,59 @@ class FieldV2:
             neighbor = random.choice(neighbors) if neighbors else None
             food = random.choice(foods) if foods else None
             direction = (random.choice([-1, 0, 1]), random.choice([-1, 0, 1]))
-            inputs.append(StepInput(index, neighbor, food, direction))
+            x, y = map(int, position)
+            safe_cells = [
+                (cx, cy) for cx, cy in cells
+                if (len(grid[cx][cy]) == 0) or ((cx, cy) == (x, y) and len(grid[cx][cy]) == 1)
+            ]
+            
+            inputs.append(StepInput(index, neighbor, food, direction, safe_cells))
         return inputs
 
     @classmethod
     def compute_agent_step(cls, state, step_input):
-        """エージェント単体の行動・状態更新量を純粋計算。"""
+        """Pure calculation: reads a snapshot and returns one agent's effects."""
         index = step_input.agent_index
         neighbor = step_input.neighbor_index
         food = step_input.food_position
-
-        # AgentV2 の観測仕様: [see_food, see_other]
-        observations = [int(food is not None), int(neighbor is not None)]
-        output = np.dot(state.weights[index], observations) % 2
+        output = tuple(cls.agent_class.action_from_weights(
+            state.weights[index], int(food is not None), int(neighbor is not None),
+            int(state.energies[index] <= state.starvation_threshold),
+            int(neighbor is not None and state.energies[neighbor] <= state.starvation_threshold),
+        ))
         action = tuple(output[:2])
         level = state.levels[index]
 
         transfer = 0.0
         recipient = None
-        # altruism_level が 1 の場合、近傍のエージェントへエネルギーを分配
-        if level == 1 and neighbor is not None:
-            available = max(0.0, state.energies[index] - state.energy_loss - state.death_threshold)
-            transfer = max(0.0, min(state.transfer_amount, available))
+        if level == 1 and neighbor is not None and state.energies[index] > state.starvation_threshold and state.energies[neighbor] <= state.starvation_threshold:
+            transfer = max(0.0, state.transfer_amount)
             recipient = neighbor
 
-        target = None
-        if action in ((0, 0), (1, 0)) and food is not None:
-            target = food
-        elif action in ((0, 1), (1, 1)) and neighbor is not None:
-            target = state.positions[neighbor]
         x, y = map(int, state.positions[index])
-        if target is None:
-            dx, dy = step_input.random_direction
+        
+        if action in ((0, 0), (0, 1)):
+            target = food if action == (0, 0) else (state.positions[neighbor] if neighbor is not None else None)
+            if target is None:
+                dx, dy = step_input.random_direction
+            else:
+                dx, dy = cls._torus_direction(x, y, *target, state.field_size)
+
+        elif action in ((1, 0), (1, 1)):
+            neighbor_cells = cls._neighbor_cells((x, y), state.field_size)
+            if action == (1, 0):
+                safe_cells = [cell for cell in neighbor_cells if state.food[cell] <= 0]
+            else:
+                safe_cells = step_input.safe_cells_for_agent
+
+            if safe_cells:
+                target_cell = random.choice(safe_cells)
+                dx, dy = cls._torus_direction(x, y, *target_cell, state.field_size)
+            else:
+                dx, dy = step_input.random_direction
         else:
-            dx, dy = FieldV2._torus_direction(x, y, *target, state.field_size)
-            if action in ((1, 0), (1, 1)):
-                dx, dy = -dx, -dy
+            dx, dy = step_input.random_direction
+
         position = ((x + dx) % state.field_size, (y + dy) % state.field_size)
         return StepResult(index, position, recipient, transfer, level)
 

@@ -1,0 +1,42 @@
+{
+  "experiment_name": "exp_v4_4_grid_search",
+  "agent_class": "AgentV4_4",
+  "field_class": "FieldV4_4",
+  "simulation": {
+    "total_steps": 1000000,
+    "eval_start_step": 500001,
+    "num_runs": 10,
+    "base_seed": 42,
+    "workers": 15
+  },
+  "grid_parameters": {
+    "initial_food_prob": [
+      0.1
+    ],
+    "step_food_prob": [
+      0.003
+    ],
+    "food_durability": [
+      5
+    ],
+    "death_threshold": [
+      -100,
+      -80,
+      -60,
+      -40,
+      -20,
+      -5
+    ],
+    "transfer_amount": [
+      1
+    ]
+  },
+  "fixed_field_parameters": {
+    "field_size": 10,
+    "initial_agents": 20,
+    "mutation_rate": 0.05,
+    "energy_loss_per_step": 0.1,
+    "reward_food": 1.0,
+    "clone_threshold": 100.0
+  }
+}

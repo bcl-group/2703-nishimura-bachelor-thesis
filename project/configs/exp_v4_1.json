@@ -3,8 +3,8 @@
   "agent_class": "AgentV4_1",
   "field_class": "FieldV4_1",
   "simulation": {
-    "total_steps": 200000,
-    "eval_start_step": 100001,
+    "total_steps": 300000,
+    "eval_start_step": 150001,
     "num_runs": 10,
     "base_seed": 42,
     "workers": 15

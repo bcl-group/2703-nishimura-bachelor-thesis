@@ -3,8 +3,8 @@
   "agent_class": "AgentV3_1",
   "field_class": "FieldV3_1",
   "simulation": {
-    "total_steps": 200000,
-    "eval_start_step": 100001,
+    "total_steps": 1000000,
+    "eval_start_step": 500001,
     "num_runs": 10,
     "base_seed": 42,
     "workers": 15
@@ -20,13 +20,6 @@
       5
     ],
     "death_threshold": [
-      -160,
-      -140,
-      -120,
-      -100,
-      -80,
-      -60,
-      -40,
       -30,
       -20,
       -10,
