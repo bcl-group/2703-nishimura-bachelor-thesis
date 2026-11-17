@@ -6,6 +6,3 @@ __pycache__/
 
 project/data/
 *.csv
-
-project/images/
-*.png
