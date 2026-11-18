@@ -232,8 +232,6 @@ class FieldV1_1:
         self.acting_agent_count = sum(
             1 for item in inputs
             if item.neighbor_index is not None
-            and state.energies[item.agent_index] > state.starvation_threshold
-            and state.energies[item.neighbor_index] <= state.starvation_threshold
         )
         self.altruism_count = sum(result.transfer > 0 for result in results)
 
